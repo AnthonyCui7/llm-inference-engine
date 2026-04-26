@@ -22,6 +22,13 @@ struct Tensor {
         data = new float[total_size()]();
     }
 
+    Tensor(const int* dimensions, int n) {
+        ndim = n;
+        assert(ndim <= 8);
+        std::memcpy(shape, dimensions, n * sizeof(int));
+        data = new float[total_size()]();
+    }
+
     Tensor() {
         data = nullptr;
         ndim = 0;
@@ -58,4 +65,5 @@ struct Tensor {
     int total_size() const;
     float& at(std::initializer_list<int> indices);
     void print() const;
+    Tensor matmul(const Tensor& other);
 };
