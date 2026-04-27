@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cmath>
 #include "tensor.hpp"
 
 int Tensor::total_size() const {
@@ -7,6 +8,30 @@ int Tensor::total_size() const {
         size *= shape[i];
     }
     return size;
+}
+
+void Tensor::init_strides() {
+    if (ndim == 0) return;
+    strides[ndim-1] = 1;
+    for (int i = ndim-2; i >= 0; i--) {
+        strides[i] = strides[i+1] * shape[i+1];
+    }
+}
+
+void Tensor::compute_strides(int* out_strides) const {
+    std::memcpy(out_strides, strides, sizeof(strides));
+}
+
+int Tensor::compute_offset(int b, const int* strides, int skip_axis) const {
+    int offset = 0;
+    int tmp = b;
+    for (int d = ndim-1; d >= 0; d--) {
+        if (d == skip_axis) continue;
+        int idx = tmp % shape[d];
+        tmp /= shape[d];
+        offset += idx * strides[d];
+    }
+    return offset;
 }
 
 float& Tensor::at(std::initializer_list<int> indices) {
@@ -29,42 +54,7 @@ float& Tensor::at(std::initializer_list<int> indices) {
     return data[index];
 }
 
-void Tensor::compute_strides(int* strides) const {
-    strides[ndim-1] = 1;
-    for (int i = ndim-2; i >= 0; i--) {
-        strides[i] = strides[i+1] * shape[i+1];
-    }
-}
-
-int Tensor::compute_offset(int b, const int* strides, int skip_axis) const {
-    int offset = 0;
-    int tmp = b;
-    for (int d = ndim-1; d >= 0; d--) {
-        if (d == skip_axis) continue;
-        int idx = tmp % shape[d];
-        tmp /= shape[d];
-        offset += idx * strides[d];
-    }
-    return offset;
-}
-
-void Tensor::print() const {
-    std::cout << "Shape: [";
-    for (int i = 0; i < ndim; i++) {
-        std::cout << shape[i];
-        if (i < ndim - 1) {
-            std::cout << ", ";
-        }
-    }
-    std::cout << "]" << std::endl;
-
-    for (int i = 0; i < total_size(); i++) {
-        std::cout << data[i] << " ";
-    }
-    std::cout << std::endl;
-}
-
-Tensor Tensor::matmul(const Tensor& other) {
+Tensor Tensor::matmul(const Tensor& other) const {
     assert(ndim == other.ndim);
     assert(shape[ndim - 1] == other.shape[ndim - 2]);
     for (int i = 0; i < ndim - 2; i++) {
@@ -95,14 +85,16 @@ Tensor Tensor::matmul(const Tensor& other) {
     int K = shape[ndim-1];
     int N = other.shape[ndim-1];
 
-    // iterate over all batch index combinations
     for (int b = 0; b < batch_size; b++) {
-        // compute batch offsets for A, B, C
-        int offset_A = compute_offset(b, stride_A, ndim-2);
-        int offset_B = compute_offset(b, stride_B, ndim-2);
-        int offset_C = compute_offset(b, stride_C, ndim-2);
-
-        // matmul for this batch
+        int offset_A = 0, offset_B = 0, offset_C = 0;
+        int tmp = b;
+        for (int d = ndim-3; d >= 0; d--) {
+            int idx = tmp % shape[d];
+            tmp /= shape[d];
+            offset_A += idx * stride_A[d];
+            offset_B += idx * stride_B[d];
+            offset_C += idx * stride_C[d];
+        }
         for (int i = 0; i < M; i++) {
             for (int j = 0; j < N; j++) {
                 float sum = 0.0f;
@@ -116,7 +108,6 @@ Tensor Tensor::matmul(const Tensor& other) {
     }
     return C;
 }
-
 
 Tensor Tensor::softmax(int axis) const {
     // compute total batch size
@@ -159,4 +150,16 @@ Tensor Tensor::softmax(int axis) const {
         }
     }
     return result;
+}
+
+void Tensor::print() const {
+    if (name[0] != '\0') std::cout << "Name: " << name << "\n";
+    std::cout << "Shape: [";
+    for (int i = 0; i < ndim; i++) {
+        std::cout << shape[i];
+        if (i < ndim - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+    for (int i = 0; i < total_size(); i++) std::cout << data[i] << " ";
+    std::cout << std::endl;
 }
