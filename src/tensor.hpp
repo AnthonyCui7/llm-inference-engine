@@ -66,4 +66,7 @@ struct Tensor {
     float& at(std::initializer_list<int> indices);
     void print() const;
     Tensor matmul(const Tensor& other);
+    Tensor softmax(int axis) const;
+    void compute_strides(int* strides) const;
+    int compute_offset(int b, const int* strides, int skip_axis = -1) const;
 };
