@@ -2,7 +2,8 @@
 #include <cmath>
 #include "tensor.hpp"
 
-int Tensor::total_size() const {
+size_t Tensor::total_size() const {
+    if (ndim == 0) return 0;
     int size = 1;
     for (int i = 0; i < ndim; i++) {
         size *= shape[i];
@@ -56,24 +57,25 @@ float& Tensor::at(std::initializer_list<int> indices) {
 
 Tensor Tensor::matmul(const Tensor& other) const {
     assert(ndim == other.ndim);
+    assert(ndim >= 2);
     assert(shape[ndim - 1] == other.shape[ndim - 2]);
+    assert(data != nullptr && other.data != nullptr);
     for (int i = 0; i < ndim - 2; i++) {
         assert(shape[i] == other.shape[i]);
     }
 
-    int out_shape[8];
+    int output_shape[8];
     for (int i = 0; i < ndim - 2; i++) {
-        out_shape[i] = shape[i];
+        output_shape[i] = shape[i];
     }
-    out_shape[ndim-2] = shape[ndim-2];
-    out_shape[ndim-1] = other.shape[ndim-1];
-    Tensor C(out_shape, ndim);
+    output_shape[ndim-2] = shape[ndim-2];
+    output_shape[ndim-1] = other.shape[ndim-1];
+    Tensor C(output_shape, ndim);
 
-    // compute strides for A, B, C
-    int stride_A[8], stride_B[8], stride_C[8];
-    compute_strides(stride_A);
-    other.compute_strides(stride_B);
-    C.compute_strides(stride_C);
+    // strides for A, B, C
+    const int* stride_A = strides;
+    const int* stride_B = other.strides;
+    const int* stride_C = C.strides;
 
     // compute total batch size
     int batch_size = 1;
@@ -87,22 +89,27 @@ Tensor Tensor::matmul(const Tensor& other) const {
 
     for (int b = 0; b < batch_size; b++) {
         int offset_A = 0, offset_B = 0, offset_C = 0;
-        int tmp = b;
+        int temp = b;
         for (int d = ndim-3; d >= 0; d--) {
-            int idx = tmp % shape[d];
-            tmp /= shape[d];
-            offset_A += idx * stride_A[d];
-            offset_B += idx * stride_B[d];
-            offset_C += idx * stride_C[d];
+            int index = temp % shape[d];
+            temp /= shape[d];
+            offset_A += index * stride_A[d];
+            offset_B += index * stride_B[d];
+            offset_C += index * stride_C[d];
         }
+        int row_A, row_C, row_B;
+        float val_A;
         for (int i = 0; i < M; i++) {
-            for (int j = 0; j < N; j++) {
-                float sum = 0.0f;
-                for (int k = 0; k < K; k++) {
-                    sum += data[offset_A + i * stride_A[ndim-2] + k * stride_A[ndim-1]] *
-                           other.data[offset_B + k * stride_B[ndim-2] + j * stride_B[ndim-1]];
+            row_A = offset_A + i * stride_A[ndim-2];
+            row_C = offset_C + i * stride_C[ndim-2];
+            for (int k = 0; k < K; k++) {
+                val_A = data[row_A + k * stride_A[ndim-1]];
+                row_B = offset_B + k * stride_B[ndim-2];
+                for (int j = 0; j < N; j++) {
+                    C.data[row_C + j * stride_C[ndim-1]] +=
+                    val_A *
+                    other.data[row_B + j * stride_B[ndim-1]];
                 }
-                C.data[offset_C + i * stride_C[ndim-2] + j * stride_C[ndim-1]] = sum;
             }
         }
     }

@@ -3,9 +3,10 @@ Header file for a tensor class. Designed to be memory efficient for large scale 
 */
 #pragma once
 
+#include <utility>
 #include <cstring>
 #include <cassert>
-#include <utility>
+#include <cstddef>
 #include <initializer_list>
 
 struct Tensor {
@@ -13,27 +14,37 @@ struct Tensor {
     int    shape[8];    // support up to 8 dimensions
     int    strides[8];  // strides for each dimension, used for indexing
     int    ndim;        // number of dimensions (8 or less)
-    char   name[64];    // optional name for debugging
+    char   name[32];    // optional name for debugging
 
     Tensor(std::initializer_list<int> dimensions, const char* tensor_name = "") {
-        ndim = dimensions.size();
-        assert(ndim <= 8);
+        assert(dimensions.size() <= 8);
+        ndim = static_cast<int>(dimensions.size());
+        assert(ndim >= 0 && ndim <= 8);
+        std::memset(shape, 0, sizeof(shape));
+        std::memset(strides, 0, sizeof(strides));
         int i = 0;
         for (const int& dim : dimensions) {
+            assert(dim > 0);
             shape[i++] = dim;
         }
-        strncpy(name, tensor_name, 63);
-        name[63] = '\0';
+        std::strncpy(name, tensor_name, 31);
+        name[31] = '\0';
         data = new float[total_size()]();
         init_strides();
     }
 
     Tensor(const int* dimensions, int n, const char* tensor_name = "") {
+        assert(n >= 0 && n <= 8);
+        assert(dimensions != nullptr || n == 0);
         ndim = n;
-        assert(ndim <= 8);
-        std::memcpy(shape, dimensions, n * sizeof(int));
-        strncpy(name, tensor_name, 63);
-        name[63] = '\0';
+        std::memset(strides, 0, sizeof(strides));
+        std::memset(shape, 0, sizeof(shape));
+        for (int i = 0; i < n; i++) {
+            assert(dimensions[i] > 0);
+            shape[i] = dimensions[i];
+        }
+        std::strncpy(name, tensor_name, 31);
+        name[31] = '\0';
         data = new float[total_size()]();
         init_strides();
     }
@@ -42,6 +53,7 @@ struct Tensor {
         data = nullptr;
         ndim = 0;
         name[0] = '\0';
+        std::memset(shape, 0, sizeof(shape));
         std::memset(strides, 0, sizeof(strides));
     }
 
@@ -54,7 +66,7 @@ struct Tensor {
             std::swap(strides[i], other.strides[i]);
         }
 
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < 32; i++) {
             std::swap(name[i], other.name[i]);
         }
     }
@@ -68,11 +80,15 @@ struct Tensor {
         ndim = other.ndim;
         std::memcpy(shape, other.shape, sizeof(shape));
         std::memcpy(strides, other.strides, sizeof(strides));
-        strncpy(name, other.name, 63);
-        name[63] = '\0';
-        int size = total_size();
-        data = new float[size];
-        std::memcpy(data, other.data, size * sizeof(float));
+        std::strncpy(name, other.name, 31);
+        name[31] = '\0';
+        size_t size = total_size();
+        if (other.data == nullptr || size == 0) {
+            data = nullptr;
+        } else {
+            data = new float[size];
+            std::memcpy(data, other.data, size * sizeof(float));
+        }
     }
 
     // copy assignment operator
@@ -85,25 +101,45 @@ struct Tensor {
 
     // move constructor
     Tensor(Tensor&& other) noexcept {
+        data = other.data;
         ndim = other.ndim;
+
         std::memcpy(shape, other.shape, sizeof(shape));
         std::memcpy(strides, other.strides, sizeof(strides));
-        strncpy(name, other.name, 63);
-        name[63] = '\0';
-        data = other.data;
+
+        std::strncpy(name, other.name, 31);
+        name[31] = '\0';
+
         other.data = nullptr;
+        other.ndim = 0;
+        std::memset(other.shape, 0, sizeof(other.shape));
+        std::memset(other.strides, 0, sizeof(other.strides));
+        other.name[0] = '\0';
     }
 
     // move assignment operator
     Tensor& operator=(Tensor&& other) noexcept {
         if (this == &other) return *this;
-        Tensor temp(std::move(other));
-        swap(temp);
+
+        delete[] data;
+
+        data = other.data;
+        ndim = other.ndim;
+        std::memcpy(shape, other.shape, sizeof(shape));
+        std::memcpy(strides, other.strides, sizeof(strides));
+        std::memcpy(name, other.name, sizeof(name));
+
+        other.data = nullptr;
+        other.ndim = 0;
+        std::memset(other.shape, 0, sizeof(other.shape));
+        std::memset(other.strides, 0, sizeof(other.strides));
+        other.name[0] = '\0';
+
         return *this;
     }
 
     // internal
-    int    total_size() const;
+    size_t total_size() const;
     void   init_strides();
     void   compute_strides(int* out_strides) const;
     int    compute_offset(int b, const int* strides, int skip_axis = -1) const;
