@@ -5,6 +5,8 @@ Header file for a tensor class. Designed to be memory efficient for large scale 
 
 #include <cstring>
 #include <cassert>
+#include <utility>
+#include <initializer_list>
 
 struct Tensor {
     float* data;        // pointer to the data buffer
@@ -43,6 +45,20 @@ struct Tensor {
         std::memset(strides, 0, sizeof(strides));
     }
 
+    void swap(Tensor& other) noexcept {
+        std::swap(data, other.data);
+        std::swap(ndim, other.ndim);
+
+        for (int i = 0; i < 8; i++) {
+            std::swap(shape[i], other.shape[i]);
+            std::swap(strides[i], other.strides[i]);
+        }
+
+        for (int i = 0; i < 64; i++) {
+            std::swap(name[i], other.name[i]);
+        }
+    }
+
     ~Tensor() {
         delete[] data;
     }
@@ -62,15 +78,27 @@ struct Tensor {
     // copy assignment operator
     Tensor& operator=(const Tensor& other) {
         if (this == &other) return *this;
+        Tensor temp(other);
+        swap(temp);
+        return *this;
+    }
+
+    // move constructor
+    Tensor(Tensor&& other) noexcept {
         ndim = other.ndim;
-        delete[] data;
         std::memcpy(shape, other.shape, sizeof(shape));
         std::memcpy(strides, other.strides, sizeof(strides));
         strncpy(name, other.name, 63);
         name[63] = '\0';
-        int size = total_size();
-        data = new float[size];
-        std::memcpy(data, other.data, size * sizeof(float));
+        data = other.data;
+        other.data = nullptr;
+    }
+
+    // move assignment operator
+    Tensor& operator=(Tensor&& other) noexcept {
+        if (this == &other) return *this;
+        Tensor temp(std::move(other));
+        swap(temp);
         return *this;
     }
 
