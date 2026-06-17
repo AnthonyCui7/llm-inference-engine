@@ -16,37 +16,37 @@ struct Tensor {
     int    ndim;        // number of dimensions (8 or less)
     char   name[32];    // optional name for debugging
 
-    Tensor(std::initializer_list<int> dimensions, const char* tensor_name = "") {
-        assert(dimensions.size() <= 8);
-        ndim = static_cast<int>(dimensions.size());
+    Tensor(std::initializer_list<int> shape, const char* tensor_name = "") {
+        assert(shape.size() <= 8);
+        ndim = static_cast<int>(shape.size());
         assert(ndim >= 0 && ndim <= 8);
-        std::memset(shape, 0, sizeof(shape));
+        std::memset(this->shape, 0, sizeof(this->shape));
         std::memset(strides, 0, sizeof(strides));
         int i = 0;
-        for (const int& dim : dimensions) {
-            assert(dim > 0);
-            shape[i++] = dim;
+        for (const int& size : shape) {
+            assert(size > 0);
+            this->shape[i++] = size;
         }
         std::strncpy(name, tensor_name, 31);
         name[31] = '\0';
-        data = new float[total_size()]();
-        init_strides();
+        data = new float[numel()]();
+        init_contiguous_strides();
     }
 
-    Tensor(const int* dimensions, int n, const char* tensor_name = "") {
+    Tensor(const int* shape, int n, const char* tensor_name = "") {
         assert(n >= 0 && n <= 8);
-        assert(dimensions != nullptr || n == 0);
+        assert(shape != nullptr || n == 0);
         ndim = n;
         std::memset(strides, 0, sizeof(strides));
-        std::memset(shape, 0, sizeof(shape));
+        std::memset(this->shape, 0, sizeof(this->shape));
         for (int i = 0; i < n; i++) {
-            assert(dimensions[i] > 0);
-            shape[i] = dimensions[i];
+            assert(shape[i] > 0);
+            this->shape[i] = shape[i];
         }
         std::strncpy(name, tensor_name, 31);
         name[31] = '\0';
-        data = new float[total_size()]();
-        init_strides();
+        data = new float[numel()]();
+        init_contiguous_strides();
     }
 
     Tensor() {
@@ -82,7 +82,7 @@ struct Tensor {
         std::memcpy(strides, other.strides, sizeof(strides));
         std::strncpy(name, other.name, 31);
         name[31] = '\0';
-        size_t size = total_size();
+        size_t size = numel();
         if (other.data == nullptr || size == 0) {
             data = nullptr;
         } else {
@@ -139,10 +139,17 @@ struct Tensor {
     }
 
     // internal
-    size_t total_size() const;
-    void   init_strides();
-    void   compute_strides(int* out_strides) const;
+    size_t numel() const;
+    int dim() const;
+    int size(int axis) const;
+    int stride(int axis) const;
+    bool is_contiguous() const;
+
+    void   init_contiguous_strides();
     int    compute_offset(int b, const int* strides, int skip_axis = -1) const;
+
+    float* data_ptr();
+    const float* data_ptr() const;
 
     // ops
     float& at(std::initializer_list<int> indices);

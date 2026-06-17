@@ -2,25 +2,45 @@
 #include <cmath>
 #include "tensor.hpp"
 
-size_t Tensor::total_size() const {
+size_t Tensor::numel() const {
     if (ndim == 0) return 0;
-    int size = 1;
+    size_t size = 1;
     for (int i = 0; i < ndim; i++) {
-        size *= shape[i];
+        size *= static_cast<size_t>(shape[i]);
     }
     return size;
 }
 
-void Tensor::init_strides() {
-    if (ndim == 0) return;
-    strides[ndim-1] = 1;
-    for (int i = ndim-2; i >= 0; i--) {
-        strides[i] = strides[i+1] * shape[i+1];
-    }
+int Tensor::dim() const {
+    return ndim;
 }
 
-void Tensor::compute_strides(int* out_strides) const {
-    std::memcpy(out_strides, strides, sizeof(strides));
+int Tensor::size(int axis) const {
+    assert(axis >= 0 && axis < ndim);
+    return shape[axis];
+}
+
+int Tensor::stride(int axis) const {
+    assert(axis >= 0 && axis < ndim);
+    return strides[axis];
+}
+
+bool Tensor::is_contiguous() const {
+    if (ndim == 0) return true;
+    int expected_stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        if (expected_stride != stride(i)) return false;
+        expected_stride *= size(i);
+    }
+    return true;
+}
+
+void Tensor::init_contiguous_strides() {
+    if (ndim == 0) return;
+    strides[ndim - 1] = 1;
+    for (int i = ndim - 2; i >= 0; i--) {
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
 }
 
 int Tensor::compute_offset(int b, const int* strides, int skip_axis) const {
@@ -33,6 +53,14 @@ int Tensor::compute_offset(int b, const int* strides, int skip_axis) const {
         offset += idx * strides[d];
     }
     return offset;
+}
+
+float* Tensor::data_ptr() {
+    return data;
+}
+
+const float* Tensor::data_ptr() const {
+    return data;
 }
 
 float& Tensor::at(std::initializer_list<int> indices) {
@@ -124,16 +152,12 @@ Tensor Tensor::softmax(int axis) const {
         batch_size *= shape[i];
     }
 
-    // compute strides
-    int stride[8];
-    compute_strides(stride);
-
     Tensor result(shape, ndim);
     int dim_size = shape[axis];
-    int axis_stride = stride[axis];
+    int axis_stride = strides[axis];
 
     for (int b = 0; b < batch_size; b++) {
-        int offset = compute_offset(b, stride, axis);
+        int offset = compute_offset(b, strides, axis);
 
         // find max for numerical stability
         float max_val = data[offset];
@@ -167,6 +191,6 @@ void Tensor::print() const {
         if (i < ndim - 1) std::cout << ", ";
     }
     std::cout << "]" << std::endl;
-    for (int i = 0; i < total_size(); i++) std::cout << data[i] << " ";
+    for (int i = 0; i < numel(); i++) std::cout << data[i] << " ";
     std::cout << std::endl;
 }
