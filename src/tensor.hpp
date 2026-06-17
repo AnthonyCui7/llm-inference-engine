@@ -20,15 +20,19 @@ struct Tensor {
         assert(shape.size() <= 8);
         ndim = static_cast<int>(shape.size());
         assert(ndim >= 0 && ndim <= 8);
+
         std::memset(this->shape, 0, sizeof(this->shape));
         std::memset(strides, 0, sizeof(strides));
+
         int i = 0;
         for (const int& size : shape) {
             assert(size > 0);
             this->shape[i++] = size;
         }
+
         std::strncpy(name, tensor_name, 31);
         name[31] = '\0';
+        
         data = new float[numel()]();
         init_contiguous_strides();
     }
@@ -36,15 +40,20 @@ struct Tensor {
     Tensor(const int* shape, int n, const char* tensor_name = "") {
         assert(n >= 0 && n <= 8);
         assert(shape != nullptr || n == 0);
+
         ndim = n;
+
         std::memset(strides, 0, sizeof(strides));
         std::memset(this->shape, 0, sizeof(this->shape));
+
         for (int i = 0; i < n; i++) {
             assert(shape[i] > 0);
             this->shape[i] = shape[i];
         }
+
         std::strncpy(name, tensor_name, 31);
         name[31] = '\0';
+        
         data = new float[numel()]();
         init_contiguous_strides();
     }
@@ -52,9 +61,9 @@ struct Tensor {
     Tensor() {
         data = nullptr;
         ndim = 0;
-        name[0] = '\0';
         std::memset(shape, 0, sizeof(shape));
         std::memset(strides, 0, sizeof(strides));
+        std::memset(name, 0, sizeof(name));
     }
 
     void swap(Tensor& other) noexcept {
@@ -78,10 +87,13 @@ struct Tensor {
     // copy constructor
     Tensor(const Tensor& other) {
         ndim = other.ndim;
+
         std::memcpy(shape, other.shape, sizeof(shape));
         std::memcpy(strides, other.strides, sizeof(strides));
+
         std::strncpy(name, other.name, 31);
         name[31] = '\0';
+
         size_t size = numel();
         if (other.data == nullptr || size == 0) {
             data = nullptr;
@@ -114,7 +126,7 @@ struct Tensor {
         other.ndim = 0;
         std::memset(other.shape, 0, sizeof(other.shape));
         std::memset(other.strides, 0, sizeof(other.strides));
-        other.name[0] = '\0';
+        std::memset(other.name, 0, sizeof(other.name));
     }
 
     // move assignment operator
@@ -133,7 +145,7 @@ struct Tensor {
         other.ndim = 0;
         std::memset(other.shape, 0, sizeof(other.shape));
         std::memset(other.strides, 0, sizeof(other.strides));
-        other.name[0] = '\0';
+        std::memset(other.name, 0, sizeof(other.name));
 
         return *this;
     }
@@ -145,8 +157,8 @@ struct Tensor {
     int stride(int axis) const;
     bool is_contiguous() const;
 
-    void   init_contiguous_strides();
-    int    compute_offset(int b, const int* strides, int skip_axis = -1) const;
+    void init_contiguous_strides();
+    int compute_offset(int b, const int* strides, int skip_axis = -1) const;
 
     float* data_ptr();
     const float* data_ptr() const;
@@ -157,5 +169,6 @@ struct Tensor {
     Tensor softmax(int axis) const;
 
     // debug
-    void   print() const;
+    void print() const;
+    void print_shape() const;
 };

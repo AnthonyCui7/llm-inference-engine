@@ -44,9 +44,10 @@ void Tensor::init_contiguous_strides() {
 }
 
 int Tensor::compute_offset(int b, const int* strides, int skip_axis) const {
+    assert(skip_axis == -1 || (skip_axis >= 0 && skip_axis < ndim));
     int offset = 0;
     int tmp = b;
-    for (int d = ndim-1; d >= 0; d--) {
+    for (int d = ndim - 1; d >= 0; d--) {
         if (d == skip_axis) continue;
         int idx = tmp % shape[d];
         tmp /= shape[d];
@@ -92,12 +93,12 @@ Tensor Tensor::matmul(const Tensor& other) const {
         assert(shape[i] == other.shape[i]);
     }
 
-    int output_shape[8];
+    int output_shape[8] = {0};
     for (int i = 0; i < ndim - 2; i++) {
         output_shape[i] = shape[i];
     }
-    output_shape[ndim-2] = shape[ndim-2];
-    output_shape[ndim-1] = other.shape[ndim-1];
+    output_shape[ndim - 2] = shape[ndim - 2];
+    output_shape[ndim - 1] = other.shape[ndim - 1];
     Tensor C(output_shape, ndim);
 
     // strides for A, B, C
@@ -111,14 +112,14 @@ Tensor Tensor::matmul(const Tensor& other) const {
         batch_size *= shape[i];
     }
 
-    int M = shape[ndim-2];
-    int K = shape[ndim-1];
-    int N = other.shape[ndim-1];
+    int M = shape[ndim - 2];
+    int K = shape[ndim - 1];
+    int N = other.shape[ndim - 1];
 
     for (int b = 0; b < batch_size; b++) {
         int offset_A = 0, offset_B = 0, offset_C = 0;
         int temp = b;
-        for (int d = ndim-3; d >= 0; d--) {
+        for (int d = ndim - 3; d >= 0; d--) {
             int index = temp % shape[d];
             temp /= shape[d];
             offset_A += index * stride_A[d];
@@ -128,15 +129,15 @@ Tensor Tensor::matmul(const Tensor& other) const {
         int row_A, row_C, row_B;
         float val_A;
         for (int i = 0; i < M; i++) {
-            row_A = offset_A + i * stride_A[ndim-2];
-            row_C = offset_C + i * stride_C[ndim-2];
+            row_A = offset_A + i * stride_A[ndim - 2];
+            row_C = offset_C + i * stride_C[ndim - 2];
             for (int k = 0; k < K; k++) {
-                val_A = data[row_A + k * stride_A[ndim-1]];
-                row_B = offset_B + k * stride_B[ndim-2];
+                val_A = data[row_A + k * stride_A[ndim - 1]];
+                row_B = offset_B + k * stride_B[ndim - 2];
                 for (int j = 0; j < N; j++) {
-                    C.data[row_C + j * stride_C[ndim-1]] +=
+                    C.data[row_C + j * stride_C[ndim - 1]] +=
                     val_A *
-                    other.data[row_B + j * stride_B[ndim-1]];
+                    other.data[row_B + j * stride_B[ndim - 1]];
                 }
             }
         }
@@ -145,6 +146,10 @@ Tensor Tensor::matmul(const Tensor& other) const {
 }
 
 Tensor Tensor::softmax(int axis) const {
+    assert(ndim > 0);
+    assert(axis >= 0 && axis < ndim);
+    assert(data != nullptr);
+
     // compute total batch size
     int batch_size = 1;
     for (int i = 0; i < ndim; i++) {
@@ -185,12 +190,40 @@ Tensor Tensor::softmax(int axis) const {
 
 void Tensor::print() const {
     if (name[0] != '\0') std::cout << "Name: " << name << "\n";
+
     std::cout << "Shape: [";
     for (int i = 0; i < ndim; i++) {
         std::cout << shape[i];
         if (i < ndim - 1) std::cout << ", ";
     }
     std::cout << "]" << std::endl;
-    for (int i = 0; i < numel(); i++) std::cout << data[i] << " ";
+
+    std::cout << "Strides: [";
+    for (int i = 0; i < ndim; i++) {
+        std::cout << strides[i];
+        if (i < ndim - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+
+    std::cout << "Data: ";
+    for (size_t i = 0; i < numel(); i++) std::cout << data[i] << " ";
     std::cout << std::endl;
+}
+
+void Tensor::print_shape() const {
+    if (name[0] != '\0') std::cout << "Name: " << name << "\n";
+
+    std::cout << "Shape: [";
+    for (int i = 0; i < ndim; i++) {
+        std::cout << shape[i];
+        if (i < ndim - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+
+    std::cout << "Strides: [";
+    for (int i = 0; i < ndim; i++) {
+        std::cout << strides[i];
+        if (i < ndim - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
 }
