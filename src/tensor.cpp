@@ -89,14 +89,28 @@ Tensor Tensor::matmul(const Tensor& other) const {
     assert(ndim >= 2);
     assert(shape[ndim - 1] == other.shape[ndim - 2]);
     assert(data != nullptr && other.data != nullptr);
+    bool broadcast = false;
     for (int i = 0; i < ndim - 2; i++) {
-        assert(shape[i] == other.shape[i]);
+        bool compatible = shape[i] != other.shape[i] && (shape[i] == 1 || other.shape[i] == 1);
+        if (compatible) broadcast = true;
+        assert(shape[i] == other.shape[i] || compatible);
     }
 
     int output_shape[8] = {0};
-    for (int i = 0; i < ndim - 2; i++) {
-        output_shape[i] = shape[i];
+    if (!broadcast) {
+        for (int i = 0; i < ndim - 2; i++) {
+            output_shape[i] = shape[i];
+        }
+    } else {
+        for (int i = 0; i < ndim - 2; i++) {
+            if (shape[i] != other.shape[i]) {
+                output_shape[i] = (other.shape[i] == 1) ? shape[i] : other.shape[i];
+                continue;
+            }
+            output_shape[i] = shape[i];
+        }
     }
+
     output_shape[ndim - 2] = shape[ndim - 2];
     output_shape[ndim - 1] = other.shape[ndim - 1];
     Tensor C(output_shape, ndim);
@@ -109,7 +123,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
     // compute total batch size
     int batch_size = 1;
     for (int i = 0; i < ndim - 2; i++) {
-        batch_size *= shape[i];
+        batch_size *= output_shape[i];
     }
 
     int M = shape[ndim - 2];
@@ -120,11 +134,19 @@ Tensor Tensor::matmul(const Tensor& other) const {
         int offset_A = 0, offset_B = 0, offset_C = 0;
         int temp = b;
         for (int d = ndim - 3; d >= 0; d--) {
-            int index = temp % shape[d];
-            temp /= shape[d];
-            offset_A += index * stride_A[d];
-            offset_B += index * stride_B[d];
+            int index = temp % output_shape[d];
+            temp /= output_shape[d];
             offset_C += index * stride_C[d];
+
+            bool A_broadcasted = shape[d] == 1 && output_shape[d] != 1;
+            bool B_broadcasted = other.shape[d] == 1 && output_shape[d] != 1;
+
+            if (!A_broadcasted) {
+                offset_A += index * stride_A[d];
+            }
+            if (!B_broadcasted) {
+                offset_B += index * stride_B[d];
+            }
         }
         int row_A, row_C, row_B;
         float val_A;
@@ -135,9 +157,7 @@ Tensor Tensor::matmul(const Tensor& other) const {
                 val_A = data[row_A + k * stride_A[ndim - 1]];
                 row_B = offset_B + k * stride_B[ndim - 2];
                 for (int j = 0; j < N; j++) {
-                    C.data[row_C + j * stride_C[ndim - 1]] +=
-                    val_A *
-                    other.data[row_B + j * stride_B[ndim - 1]];
+                    C.data[row_C + j * stride_C[ndim - 1]] += val_A * other.data[row_B + j * stride_B[ndim - 1]];
                 }
             }
         }
