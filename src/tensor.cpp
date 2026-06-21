@@ -166,7 +166,6 @@ Tensor Tensor::matmul(const Tensor& other) const {
 }
 
 Tensor Tensor::softmax(int axis) const {
-    assert(ndim > 0);
     assert(axis >= 0 && axis < ndim);
     assert(data != nullptr);
 
@@ -177,7 +176,7 @@ Tensor Tensor::softmax(int axis) const {
         batch_size *= shape[i];
     }
 
-    Tensor result(shape, ndim);
+    Tensor out(*this);
     int dim_size = shape[axis];
     int axis_stride = strides[axis];
 
@@ -185,27 +184,23 @@ Tensor Tensor::softmax(int axis) const {
         int offset = compute_offset(b, strides, axis);
 
         // find max for numerical stability
-        float max_val = data[offset];
+        float max = data[offset];
         for (int i = 1; i < dim_size; i++) {
-            float val = data[offset + i * axis_stride];
-            if (val > max_val) {
-                max_val = val;
-            }
+            float curr = data[offset + i * axis_stride];
+            max = (curr > max) ? curr : max;
         }
 
-        float sum_exp = 0.0f;
+        // find sum of exponentials
+        float sum = 0.0;
         for (int i = 0; i < dim_size; i++) {
-            float val = data[offset + i * axis_stride];
-            float exp_val = std::exp(val - max_val);
-            result.data[offset + i * axis_stride] = exp_val;
-            sum_exp += exp_val;
+            sum += std::exp(data[offset + i * axis_stride] - max);
         }
 
         for (int i = 0; i < dim_size; i++) {
-            result.data[offset + i * axis_stride] /= sum_exp;
+            out.data[offset + i * axis_stride] = (std::exp(data[offset + i * axis_stride] - max)) / sum;
         }
     }
-    return result;
+    return out;
 }
 
 void Tensor::print() const {
