@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cmath>
+
 #include "tensor.hpp"
 
 size_t Tensor::numel() const {

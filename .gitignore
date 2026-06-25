@@ -1,0 +1,26 @@
+# Build outputs
+bin/
+build/
+*.o
+*.out
+*.exe
+*.dSYM/
+
+# Editor / OS files
+.vscode/
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+
+# Python scripts / benchmark plotting later
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Benchmark outputs
+*.csv
+*.json
+*.prof
