@@ -116,6 +116,35 @@ Tensor Tensor::matmul(const Tensor& other) const {
     assert(ndim >= 2);
     assert(shape[ndim - 1] == other.shape[ndim - 2]);
     assert(data != nullptr && other.data != nullptr);
+
+    if (ndim == 2 && is_contiguous() && other.is_contiguous()) {
+        // 2d matmul fast path
+        int output_shape[8] = {0};
+
+        int I = shape[0];
+        int J = other.shape[1];
+        int K = shape[1];
+
+        output_shape[0] = I;
+        output_shape[1] = J;
+        Tensor C(output_shape, 2);
+
+        for (int i = 0; i < I; i++) {
+            int row_A = i * K;
+            int row_C = i * J;
+            for (int k = 0; k < K; k++) {
+                float val_A = data[row_A + k];
+                int row_B = k * J;
+                for (int j = 0; j < J; j++) {
+                    C.data[row_C + j] += val_A * other.data[j + row_B];
+                }
+            }
+        }
+
+        return C;
+    }
+
+
     bool broadcast = false;
     for (int i = 0; i < ndim - 2; i++) {
         bool compatible = shape[i] != other.shape[i] && (shape[i] == 1 || other.shape[i] == 1);
