@@ -125,7 +125,37 @@ int main() {
     }
 
     assert(A.data[0] == 10);
+
+    // test factory methods
+    Tensor Z = Tensor::zeros({2, 3});
+    for (size_t i = 0; i < Z.numel(); i++) {
+        assert(Z.data[i] == 0.0f);
+    }
+
+    Tensor O = Tensor::ones({2, 3});
+    for (size_t i = 0; i < O.numel(); i++) {
+        assert(O.data[i] == 1.0f);
+    }
+
+    Tensor F = Tensor::full({2, 3}, 7.0f);
+    for (size_t i = 0; i < F.numel(); i++) {
+        assert(F.data[i] == 7.0f);
+    }
+
+    Tensor G = Tensor::from_data({2, 3}, {1, 2, 3, 4, 5, 6});
+    assert(G.at({0, 0}) == 1.0f);
+    assert(G.at({0, 1}) == 2.0f);
+    assert(G.at({1, 2}) == 6.0f);
+
+    // test matmul
+    Tensor X1 = Tensor::from_data({2, 3}, {1, 2, 3, 4, 5, 6});
+    Tensor Y1 = Tensor::from_data({3, 2}, {1, 2, 3, 4, 5, 6});
+    Tensor Z1 = X1.matmul(Y1);
     
+    assert(Z1.at({0, 0}) == 22);
+    assert(Z1.at({0, 1}) == 28);
+    assert(Z1.at({1, 0}) == 49);
+    assert(Z1.at({1, 1}) == 64);
 
     std::cout << "Test finished" << std::endl;
 

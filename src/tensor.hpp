@@ -163,6 +163,12 @@ struct Tensor {
     float* data_ptr();
     const float* data_ptr() const;
 
+    // factories
+    static Tensor zeros(std::initializer_list<int> shape);
+    static Tensor ones(std::initializer_list<int> shape);
+    static Tensor full(std::initializer_list<int> shape, float value);
+    static Tensor from_data(std::initializer_list<int> shape, std::initializer_list<float> values);
+
     // ops
     float& at(std::initializer_list<int> indices);
     Tensor matmul(const Tensor& other) const;

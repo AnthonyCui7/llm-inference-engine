@@ -65,6 +65,37 @@ const float* Tensor::data_ptr() const {
     return data;
 }
 
+Tensor Tensor::zeros(std::initializer_list<int> shape) {
+    Tensor out(shape);
+    return out;
+}
+
+Tensor Tensor::ones(std::initializer_list<int> shape) {
+    Tensor out(shape);
+    for (size_t i = 0; i < out.numel(); i++) {
+        out.data[i] = 1;
+    }
+    return out;
+}
+
+Tensor Tensor::full(std::initializer_list<int> shape, float value) {
+    Tensor out(shape);
+    for (size_t i = 0; i < out.numel(); i++) {
+        out.data[i] = value;
+    }
+    return out;
+}
+
+Tensor Tensor::from_data(std::initializer_list<int> shape, std::initializer_list<float> values) {
+    Tensor out(shape);
+    assert(out.numel() == values.size());
+    size_t i = 0;
+    for (float val : values) {
+        out.data[i++] = val;
+    }
+    return out;
+}
+
 float& Tensor::at(std::initializer_list<int> indices) {
     assert(indices.size() == static_cast<size_t>(ndim));
     int arr[8];
