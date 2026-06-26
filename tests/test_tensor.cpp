@@ -235,7 +235,7 @@ int main() {
     assert(std::abs(softmax_out.at({0, 0}) + softmax_out.at({0, 1}) + softmax_out.at({0, 2}) - 1.0f) < 1e-5f);
     assert(std::abs(softmax_out.at({1, 0}) + softmax_out.at({1, 1}) + softmax_out.at({1, 2}) - 1.0f) < 1e-5f);
 
-        Tensor softmax_axis0_input = Tensor::from_data({2, 3}, {
+    Tensor softmax_axis0_input = Tensor::from_data({2, 3}, {
         1, 2, 3,
         4, 5, 6
     });
@@ -255,7 +255,7 @@ int main() {
     assert(std::abs(softmax_axis0_out.at({0, 1}) + softmax_axis0_out.at({1, 1}) - 1.0f) < 1e-5f);
     assert(std::abs(softmax_axis0_out.at({0, 2}) + softmax_axis0_out.at({1, 2}) - 1.0f) < 1e-5f);
 
-    std::cout << "Test finished" << std::endl;
+    std::cout << "All tensor tests passed" << std::endl;
 
     return 0;
 }
