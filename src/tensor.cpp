@@ -98,22 +98,17 @@ Tensor Tensor::from_data(std::initializer_list<int> shape, std::initializer_list
 
 float& Tensor::at(std::initializer_list<int> indices) {
     assert(indices.size() == static_cast<size_t>(ndim));
-    int arr[8];
-    int i = 0;
-    for (const int& val : indices) {
-        arr[i++] = val;
+    assert(data != nullptr);
+
+    int flat_index = 0;
+    size_t axis = 0;
+
+    for (int idx : indices) {
+        assert(idx >= 0 && idx < shape[axis]);
+        flat_index += strides[axis++] * idx;
     }
-    int index = 0;
-    int multiple = 1;
-    for (size_t i = 0; i < indices.size(); i++) {
-        assert(arr[i] < shape[i] && arr[i] >= 0);
-        for (size_t j = i + 1; j < indices.size(); j++) {
-            multiple *= shape[j];
-        }
-        index += arr[i] * multiple;
-        multiple = 1;
-    }
-    return data[index];
+
+    return data[flat_index];
 }
 
 Tensor Tensor::matmul(const Tensor& other) const {
