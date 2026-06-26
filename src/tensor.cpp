@@ -130,13 +130,14 @@ Tensor Tensor::matmul(const Tensor& other) const {
         Tensor C(output_shape, 2);
 
         for (int i = 0; i < I; i++) {
-            int row_A = i * K;
+            const float* a_row = data + i * K;
             int row_C = i * J;
             for (int k = 0; k < K; k++) {
-                float val_A = data[row_A + k];
-                int row_B = k * J;
+                float val_A = a_row[k];
+                float* c_row = C.data + row_C;
+                const float* b_row = other.data + k * J;
                 for (int j = 0; j < J; j++) {
-                    C.data[row_C + j] += val_A * other.data[j + row_B];
+                    c_row[j] += val_A * b_row[j];
                 }
             }
         }
@@ -218,6 +219,52 @@ Tensor Tensor::matmul(const Tensor& other) const {
             }
         }
     }
+    return C;
+}
+
+Tensor Tensor::matmul_2d_blocked(const Tensor& other, int block_size) const {
+    assert(ndim == other.ndim);
+    assert(ndim == 2);
+    assert(shape[ndim - 1] == other.shape[ndim - 2]);
+    assert(data != nullptr && other.data != nullptr);
+    assert(is_contiguous() && other.is_contiguous());
+    assert(block_size > 0);
+
+    int output_shape[8] = {0};
+
+    int I = shape[0];
+    int J = other.shape[1];
+    int K = shape[1];
+
+    assert(I % block_size == 0);
+    assert(J % block_size == 0);
+    assert(K % block_size == 0);
+
+    output_shape[0] = I;
+    output_shape[1] = J;
+    Tensor C(output_shape, 2);
+
+    for (int ii = 0; ii < I; ii += block_size) {
+        for (int jj = 0; jj < J; jj += block_size) {
+            for (int kk = 0; kk < K; kk += block_size) {
+
+                for (int i = ii; i < ii + block_size; i++) {
+                    const float* a_row = data + i * K;
+                    int row_C = i * J;
+                    for (int k = kk; k < kk + block_size; k++) {
+                        float val_A = a_row[k];
+                        float* c_row = C.data + row_C;
+                        const float* b_row = other.data + k * J;
+                        for (int j = jj; j < jj + block_size; j++) {
+                            c_row[j] += val_A * b_row[j];
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+
     return C;
 }
 

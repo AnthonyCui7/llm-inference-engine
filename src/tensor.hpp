@@ -172,6 +172,7 @@ struct Tensor {
     // ops
     float& at(std::initializer_list<int> indices);
     Tensor matmul(const Tensor& other) const;
+    Tensor matmul_2d_blocked(const Tensor& other, int block_size) const;
     Tensor softmax(int axis) const;
 
     // debug
