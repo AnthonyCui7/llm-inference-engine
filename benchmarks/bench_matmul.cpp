@@ -3,6 +3,7 @@
 #include <cstring>
 #include <iostream>
 #include <chrono>
+#include <thread>
 
 #include "tensor.hpp"
 
@@ -28,7 +29,7 @@ void benchmark_matmul(int N, int iterations, int warmup_iters) {
     // warmup
     float warmup_checksum = 0.0f;
     for (int i = 0; i < warmup_iters; i++) {
-        Tensor out = lhs.matmul(rhs);
+        Tensor out = lhs.matmul_2d_threaded(rhs, 11);
         warmup_checksum += out.data[0];
     }
 
@@ -38,7 +39,7 @@ void benchmark_matmul(int N, int iterations, int warmup_iters) {
     float checksum = 0.0f;
     Tensor out;
     for (int i = 0; i < iterations; i++) {
-        Tensor out = lhs.matmul(rhs);
+        Tensor out = lhs.matmul_2d_threaded(rhs, 11);
         checksum += out.data[0];
     }
 
@@ -67,11 +68,13 @@ void benchmark_matmul(int N, int iterations, int warmup_iters) {
 }
 
 int main() {
-    benchmark_matmul(64, 256, 64);
-    benchmark_matmul(128, 128, 32);
-    benchmark_matmul(256, 32, 16);
-    benchmark_matmul(512, 16, 8);
-    benchmark_matmul(1024, 4, 2);
+    benchmark_matmul(64, 512, 128);
+    benchmark_matmul(128, 256, 64);
+    benchmark_matmul(256, 64, 16);
+    benchmark_matmul(512, 16, 4);
+    benchmark_matmul(1024, 8, 2);
+    benchmark_matmul(2048, 4, 1);
+    benchmark_matmul(4096, 3, 1);
 
     return 0;
 }
