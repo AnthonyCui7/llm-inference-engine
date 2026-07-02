@@ -238,26 +238,30 @@ Tensor Tensor::matmul_2d_blocked(const Tensor& other, int block_size) const {
     int J = other.shape[1];
     int K = shape[1];
 
-    assert(I % block_size == 0);
-    assert(J % block_size == 0);
-    assert(K % block_size == 0);
+    int BI = block_size;
+    int BJ = block_size;
+    int BK = block_size;
+
+    assert(I % BI == 0);
+    assert(J % BJ == 0);
+    assert(K % BK == 0);
 
     output_shape[0] = I;
     output_shape[1] = J;
     Tensor C(output_shape, 2);
 
-    for (int ii = 0; ii < I; ii += block_size) {
-        for (int jj = 0; jj < J; jj += block_size) {
-            for (int kk = 0; kk < K; kk += block_size) {
+    for (int ii = 0; ii < I; ii += BI) {
+        for (int jj = 0; jj < J; jj += BJ) {
+            for (int kk = 0; kk < K; kk += BK) {
 
-                for (int i = ii; i < ii + block_size; i++) {
+                for (int i = ii; i < ii + BI; i++) {
                     const float* a_row = data + i * K;
                     int row_C = i * J;
-                    for (int k = kk; k < kk + block_size; k++) {
+                    for (int k = kk; k < kk + BK; k++) {
                         float val_A = a_row[k];
                         float* c_row = C.data + row_C;
                         const float* b_row = other.data + k * J;
-                        for (int j = jj; j < jj + block_size; j++) {
+                        for (int j = jj; j < jj + BJ; j++) {
                             c_row[j] += val_A * b_row[j];
                         }
                     }
@@ -294,23 +298,26 @@ Tensor Tensor::matmul_2d_threaded(const Tensor& other, int thread_count) const {
     assert(shape[ndim - 1] == other.shape[ndim - 2]);
     assert(data != nullptr && other.data != nullptr);
 
+    int I = shape[0];
+    int J = other.shape[1];
+
+    if (thread_count == 0) {
+        thread_count = (static_cast<int>(std::thread::hardware_concurrency()) == 0) ? 1 : static_cast<int>(static_cast<int>(std::thread::hardware_concurrency()));
+    }
+
     assert(thread_count > 0);
-    assert(std::thread::hardware_concurrency() == 0 || thread_count <= static_cast<int>(std::thread::hardware_concurrency()));
+    assert(thread_count <= I);
+    assert(I % thread_count == 0);
 
     std::vector<std::thread> threads;
 
     int output_shape[8] = {0};
-
-    int I = shape[0];
-    int J = other.shape[1];
-
-    assert(I % thread_count == 0 && I / thread_count != 0);
-
     output_shape[0] = I;
     output_shape[1] = J;
     Tensor C(output_shape, 2);
 
     int rows_per_thread = I / thread_count;
+    
     for (int i = 0; i < thread_count; i++) {
         threads.emplace_back(matmul_worker, std::ref(*this), std::ref(other), std::ref(C), rows_per_thread * i, rows_per_thread * (i + 1));
     }
