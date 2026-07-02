@@ -29,7 +29,7 @@ void benchmark_matmul(int N, int iterations, int warmup_iters) {
     // warmup
     float warmup_checksum = 0.0f;
     for (int i = 0; i < warmup_iters; i++) {
-        Tensor out = lhs.matmul_2d_threaded(rhs, 11);
+        Tensor out = lhs.matmul(rhs, 10);
         warmup_checksum += out.data[0];
     }
 
@@ -39,7 +39,7 @@ void benchmark_matmul(int N, int iterations, int warmup_iters) {
     float checksum = 0.0f;
     Tensor out;
     for (int i = 0; i < iterations; i++) {
-        Tensor out = lhs.matmul_2d_threaded(rhs, 11);
+        Tensor out = lhs.matmul(rhs, 10);
         checksum += out.data[0];
     }
 
@@ -55,6 +55,12 @@ void benchmark_matmul(int N, int iterations, int warmup_iters) {
     double flops = static_cast<double>(iterations) * 2.0 * N * N * N;
     double gflops = flops / 1e9;
     double gflops_per_sec = gflops / seconds;
+
+    // test correct output
+    Tensor gold = lhs.matmul_naive(rhs);
+    for (size_t i = 0; i < gold.numel(); i++) {
+        assert(gold.data[i] == out.data[i]);
+    }
 
     std::cout
         << "N = " << N

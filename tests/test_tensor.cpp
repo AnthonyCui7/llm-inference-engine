@@ -156,6 +156,16 @@ int main() {
     assert(matmul_out_2d.at({1, 0}) == 49);
     assert(matmul_out_2d.at({1, 1}) == 64);
 
+    // test threaded 2d contiguous matmul
+    Tensor matmul_lhs_threaded_2d = Tensor::from_data({2, 3}, {1, 2, 3, 4, 5, 6});
+    Tensor matmul_rhs_threaded_2d = Tensor::from_data({3, 2}, {1, 2, 3, 4, 5, 6});
+    Tensor matmul_out_threaded_2d = matmul_lhs_2d.matmul_2d_threaded(matmul_rhs_2d, 2);
+    
+    assert(matmul_out_threaded_2d.at({0, 0}) == 22);
+    assert(matmul_out_threaded_2d.at({0, 1}) == 28);
+    assert(matmul_out_threaded_2d.at({1, 0}) == 49);
+    assert(matmul_out_threaded_2d.at({1, 1}) == 64);
+
     Tensor matmul_lhs_3d = Tensor::from_data({2, 2, 3}, {
         1, 2, 3,
         4, 5, 6,

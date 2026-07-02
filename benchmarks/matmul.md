@@ -2,11 +2,13 @@
 
 ## Benchmark Method
 
+Compiler: `clang++`
+Benchmark flags: `-std=c++17 -Wall -Wextra -Wpedantic -Isrc -O3 -march=native -DNDEBUG`
+
 For benchmark code, see `bench_matmul.cpp`.
 
 - Matrices are square: N x N
 - Input values are deterministic
-- Operation measured: `lhs.matmul(rhs)`
 - Warmup iterations are excluded from timing
 - FLOPs estimate: `2 * N^3`
 - Output correctness sanity check: checksum
@@ -18,7 +20,7 @@ N = 128: 256 timed iterations, 64 warmup iterations
 N = 256: 64 timed iterations, 16 warmup iterations
 N = 512: 16 timed iterations, 4 warmup iterations
 N = 1024: 8 timed iterations, 2 warmup iterations
-N = 2048: 4 timed iterations, 1 warmup iterations
+N = 2048: 4 timed iterations, 1 warmup iteration
 N = 4096: 3 timed iterations, 1 warmup iteration
 ```
 
@@ -93,23 +95,23 @@ N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1279.4, gflop/s = 107.425, check
 
 ## Threaded contiguous 2D matmul, threads = 10
 ```text
-N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.083582, gflop/s = 6.27274, checksum = 137.625, warmup_checksum = 34.4064
-N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0917441, gflop/s = 45.7174, checksum = 152.013, warmup_checksum = 38.0032
-N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.341207, gflop/s = 98.3404, checksum = 77.376, warmup_checksum = 19.344
-N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.7259, gflop/s = 155.534, checksum = 39.0672, warmup_checksum = 9.7668
-N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.4844, gflop/s = 159.256, checksum = 39.296, warmup_checksum = 9.82399
-N = 2048, iters = 4, warmup_iters = 1, avg_ms = 126.265, gflop/s = 136.062, checksum = 39.2923, warmup_checksum = 9.82308
-N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1306.63, gflop/s = 105.186, checksum = 58.9486, warmup_checksum = 19.6495
+N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.0897239, gflop/s = 5.84335, checksum = 137.625, warmup_checksum = 34.4064
+N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0852586, gflop/s = 49.1951, checksum = 152.013, warmup_checksum = 38.0032
+N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.321444, gflop/s = 104.387, checksum = 77.376, warmup_checksum = 19.344
+N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.71247, gflop/s = 156.754, checksum = 39.0672, warmup_checksum = 9.7668
+N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.172, gflop/s = 163.034, checksum = 39.296, warmup_checksum = 9.82399
+N = 2048, iters = 4, warmup_iters = 1, avg_ms = 101.091, gflop/s = 169.944, checksum = 39.2923, warmup_checksum = 9.82308
+N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1361.75, gflop/s = 100.928, checksum = 58.9486, warmup_checksum = 19.6495
 ```
 
 
 ## Threaded contiguous 2D matmul, threads = 11 (max hardware threads)
 ```text
-N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.107149, gflop/s = 4.89306, checksum = 137.625, warmup_checksum = 34.4064
-N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0961149, gflop/s = 43.6384, checksum = 152.013, warmup_checksum = 38.0032
-N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.344218, gflop/s = 97.4802, checksum = 77.376, warmup_checksum = 19.344
-N = 512, iters = 16, warmup_iters = 4, avg_ms = 3.0313, gflop/s = 88.5544, checksum = 39.0672, warmup_checksum = 9.7668
-N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.5936, gflop/s = 157.978, checksum = 39.296, warmup_checksum = 9.82399
-N = 2048, iters = 4, warmup_iters = 1, avg_ms = 113.313, gflop/s = 151.614, checksum = 39.2923, warmup_checksum = 9.82308
-N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1283.78, gflop/s = 107.058, checksum = 58.9486, warmup_checksum = 19.6495
+N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.0835247, gflop/s = 6.27704, checksum = 137.625, warmup_checksum = 34.4064
+N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0886198, gflop/s = 47.3292, checksum = 152.013, warmup_checksum = 38.0032
+N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.335259, gflop/s = 100.085, checksum = 77.376, warmup_checksum = 19.344
+N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.7594, gflop/s = 152.572, checksum = 39.0672, warmup_checksum = 9.7668
+N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.626, gflop/s = 157.602, checksum = 39.296, warmup_checksum = 9.82399
+N = 2048, iters = 4, warmup_iters = 1, avg_ms = 100.561, gflop/s = 170.84, checksum = 39.2923, warmup_checksum = 9.82308
+N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1300.96, gflop/s = 105.644, checksum = 58.9486, warmup_checksum = 19.6495
 ```
