@@ -172,6 +172,7 @@ struct Tensor {
     // ops
     Tensor add(const Tensor& other) const;
     Tensor mul(const Tensor& other) const;
+    Tensor sub(const Tensor& other) const;
     Tensor matmul(const Tensor& other, int thread_count = 0) const;
     Tensor softmax(int axis) const;
 
