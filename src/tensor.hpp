@@ -170,12 +170,16 @@ struct Tensor {
     static Tensor from_data(std::initializer_list<int> shape, std::initializer_list<float> values);
 
     // ops
-    float& at(std::initializer_list<int> indices);
+    Tensor add(const Tensor& other) const;
+    Tensor mul(const Tensor& other) const;
     Tensor matmul(const Tensor& other, int thread_count = 0) const;
+    Tensor softmax(int axis) const;
+
+    // old/unused test ops
+    float& at(std::initializer_list<int> indices);
     Tensor matmul_naive(const Tensor& other) const;
     Tensor matmul_2d_blocked(const Tensor& other, int block_size) const;
     Tensor matmul_2d_threaded(const Tensor& other, int thread_count = 0) const;
-    Tensor softmax(int axis) const;
 
     // debug
     void print() const;

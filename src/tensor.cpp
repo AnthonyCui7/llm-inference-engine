@@ -98,21 +98,6 @@ Tensor Tensor::from_data(std::initializer_list<int> shape, std::initializer_list
     return out;
 }
 
-float& Tensor::at(std::initializer_list<int> indices) {
-    assert(indices.size() == static_cast<size_t>(ndim));
-    assert(data != nullptr);
-
-    int flat_index = 0;
-    size_t axis = 0;
-
-    for (int idx : indices) {
-        assert(idx >= 0 && idx < shape[axis]);
-        flat_index += strides[axis++] * idx;
-    }
-
-    return data[flat_index];
-}
-
 void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int start, int end) {
     int ndim = A.ndim;
 
@@ -231,6 +216,127 @@ Tensor Tensor::matmul(const Tensor& other, int thread_count) const {
     }
 
     return C;
+}
+
+Tensor Tensor::add(const Tensor& other) const {
+    assert(ndim == other.ndim);
+    assert(data != nullptr);
+    assert(other.data != nullptr);
+
+    bool broadcast = false;
+    for (int i = 0; i < ndim; i++) {
+        bool compatible = shape[i] != other.shape[i] && (shape[i] == 1 || other.shape[i] == 1);
+        if (compatible) broadcast = true;
+        assert(shape[i] == other.shape[i] || compatible);
+    }
+
+    int output_shape[8] = {0};
+    if (!broadcast) {
+        for (int i = 0; i < ndim; i++) {
+            output_shape[i] = shape[i];
+        }
+    } else {
+        for (int i = 0; i < ndim; i++) {
+            if (shape[i] != other.shape[i]) {
+                output_shape[i] = (other.shape[i] == 1) ? shape[i] : other.shape[i];
+                continue;
+            }
+            output_shape[i] = shape[i];
+        }
+    }
+
+    Tensor C(output_shape, ndim);
+
+    // strides for A, B, C
+    const int* stride_A = strides;
+    const int* stride_B = other.strides;
+    const int* stride_C = C.strides;
+
+    if (!broadcast && is_contiguous() && other.is_contiguous()) {
+        for (int i = 0; i < numel(); i++) {
+            C.data[i] = data[i] + other.data[i];
+        }
+    } else {
+        int total_elements = static_cast<int>(C.numel());
+
+        for (int elem = 0; elem < total_elements; elem++) {
+            int offset_A = 0, offset_B = 0, offset_C = 0;
+            int temp = elem;
+
+            for (int d = ndim - 1; d >= 0; d--) {
+                int index = temp % output_shape[d];
+                temp /= output_shape[d];
+                offset_C += index * stride_C[d];
+
+                bool A_broadcasted = shape[d] == 1 && output_shape[d] != 1;
+                bool B_broadcasted = other.shape[d] == 1 && output_shape[d] != 1;
+
+                if (!A_broadcasted) {
+                    offset_A += index * stride_A[d];
+                }
+                if (!B_broadcasted) {
+                    offset_B += index * stride_B[d];
+                }
+            }
+
+            C.data[offset_C] = data[offset_A] + other.data[offset_B];
+        }
+    }
+    
+    return C;
+}
+
+Tensor Tensor::softmax(int axis) const {
+    assert(axis >= 0 && axis < ndim);
+    assert(data != nullptr);
+
+    // compute total batch size
+    int batch_size = 1;
+    for (int i = 0; i < ndim; i++) {
+        if (i == axis) continue;
+        batch_size *= shape[i];
+    }
+
+    Tensor out(*this);
+    int dim_size = shape[axis];
+    int axis_stride = strides[axis];
+
+    for (int b = 0; b < batch_size; b++) {
+        int offset = compute_offset(b, strides, axis);
+
+        // find max for numerical stability
+        float max = data[offset];
+        for (int i = 1; i < dim_size; i++) {
+            float curr = data[offset + i * axis_stride];
+            max = (curr > max) ? curr : max;
+        }
+
+        // find sum of exponentials
+        float sum = 0.0;
+        for (int i = 0; i < dim_size; i++) {
+            sum += std::exp(data[offset + i * axis_stride] - max);
+        }
+
+        for (int i = 0; i < dim_size; i++) {
+            out.data[offset + i * axis_stride] = (std::exp(data[offset + i * axis_stride] - max)) / sum;
+        }
+    }
+    return out;
+}
+
+float& Tensor::at(std::initializer_list<int> indices) {
+    assert(indices.size() == static_cast<size_t>(ndim));
+    assert(data != nullptr);
+
+    int flat_index = 0;
+    size_t axis = 0;
+
+    for (int idx : indices) {
+        assert(idx >= 0 && idx < shape[axis]);
+        flat_index += strides[axis++] * idx;
+    }
+
+    return data[flat_index];
 }
 
 Tensor Tensor::matmul_naive(const Tensor& other) const {
@@ -454,44 +560,6 @@ Tensor Tensor::matmul_2d_threaded(const Tensor& other, int thread_count) const {
     }
 
     return C;
-}
-
-Tensor Tensor::softmax(int axis) const {
-    assert(axis >= 0 && axis < ndim);
-    assert(data != nullptr);
-
-    // compute total batch size
-    int batch_size = 1;
-    for (int i = 0; i < ndim; i++) {
-        if (i == axis) continue;
-        batch_size *= shape[i];
-    }
-
-    Tensor out(*this);
-    int dim_size = shape[axis];
-    int axis_stride = strides[axis];
-
-    for (int b = 0; b < batch_size; b++) {
-        int offset = compute_offset(b, strides, axis);
-
-        // find max for numerical stability
-        float max = data[offset];
-        for (int i = 1; i < dim_size; i++) {
-            float curr = data[offset + i * axis_stride];
-            max = (curr > max) ? curr : max;
-        }
-
-        // find sum of exponentials
-        float sum = 0.0;
-        for (int i = 0; i < dim_size; i++) {
-            sum += std::exp(data[offset + i * axis_stride] - max);
-        }
-
-        for (int i = 0; i < dim_size; i++) {
-            out.data[offset + i * axis_stride] = (std::exp(data[offset + i * axis_stride] - max)) / sum;
-        }
-    }
-    return out;
 }
 
 void Tensor::print() const {
