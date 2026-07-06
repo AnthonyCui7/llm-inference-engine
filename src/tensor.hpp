@@ -170,6 +170,10 @@ struct Tensor {
     static Tensor from_data(std::initializer_list<int> shape, std::initializer_list<float> values);
 
     // ops
+    Tensor add(float scalar) const;
+    Tensor mul(float scalar) const;
+    Tensor sub(float scalar) const;
+    Tensor div(float scalar) const;
     Tensor add(const Tensor& other) const;
     Tensor mul(const Tensor& other) const;
     Tensor sub(const Tensor& other) const;

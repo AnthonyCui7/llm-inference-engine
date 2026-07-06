@@ -98,124 +98,52 @@ Tensor Tensor::from_data(std::initializer_list<int> shape, std::initializer_list
     return out;
 }
 
-void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int start, int end) {
-    int ndim = A.ndim;
+Tensor Tensor::add(float scalar) const {
+    assert(data != nullptr);
 
-    // strides for A, B, C
-    const int* stride_A = A.strides;
-    const int* stride_B = B.strides;
-    const int* stride_C = C.strides;
+    Tensor out = *this;
 
-    int I = A.shape[ndim - 2];
-    int J = B.shape[ndim - 1];
-    int K = A.shape[ndim - 1];
-
-    for (int task = start; task < end; task++) {
-        int offset_A = 0, offset_B = 0, offset_C = 0;
-        int temp = task / I;
-        int row = task % I;
-        for (int d = ndim - 3; d >= 0; d--) {
-            int index = temp % C.shape[d];
-            temp /= C.shape[d];
-            offset_C += index * stride_C[d];
-
-            bool A_broadcasted = A.shape[d] == 1 && C.shape[d] != 1;
-            bool B_broadcasted = B.shape[d] == 1 && C.shape[d] != 1;
-
-            if (!A_broadcasted) {
-                offset_A += index * stride_A[d];
-            }
-            if (!B_broadcasted) {
-                offset_B += index * stride_B[d];
-            }
-        }
-
-        const float* a_row = A.data + offset_A + row * stride_A[ndim - 2];
-        float* c_row = C.data + offset_C + row * stride_C[ndim - 2];
-        for (int k = 0; k < K; k++) {
-            float val_A = a_row[k * stride_A[ndim - 1]];
-            const float* b_row = B.data + offset_B + k * stride_B[ndim - 2];
-            for (int j = 0; j < J; j++) {
-                c_row[j * stride_C[ndim - 1]] += val_A * b_row[j * stride_B[ndim - 1]];
-            }
-        }
-
+    for (size_t i = 0; i < numel(); i++) {
+        out.data[i] += scalar;
     }
+
+    return out;
 }
 
-Tensor Tensor::matmul(const Tensor& other, int thread_count) const {
-    assert(ndim == other.ndim);
-    assert(ndim >= 2);
-    assert(shape[ndim - 1] == other.shape[ndim - 2]);
-    assert(data != nullptr && other.data != nullptr);
+Tensor Tensor::mul(float scalar) const {
+    assert(data != nullptr);
 
-    bool broadcast = false;
-    for (int i = 0; i < ndim - 2; i++) {
-        bool compatible = shape[i] != other.shape[i] && (shape[i] == 1 || other.shape[i] == 1);
-        if (compatible) broadcast = true;
-        assert(shape[i] == other.shape[i] || compatible);
+    Tensor out = *this;
+
+    for (size_t i = 0; i < numel(); i++) {
+        out.data[i] *= scalar;
     }
 
-    int output_shape[8] = {0};
-    if (!broadcast) {
-        for (int i = 0; i < ndim - 2; i++) {
-            output_shape[i] = shape[i];
-        }
-    } else {
-        for (int i = 0; i < ndim - 2; i++) {
-            if (shape[i] != other.shape[i]) {
-                output_shape[i] = (other.shape[i] == 1) ? shape[i] : other.shape[i];
-                continue;
-            }
-            output_shape[i] = shape[i];
-        }
+    return out;
+}
+
+Tensor Tensor::sub(float scalar) const {
+    assert(data != nullptr);
+
+    Tensor out = *this;
+
+    for (size_t i = 0; i < numel(); i++) {
+        out.data[i] -= scalar;
     }
 
-    output_shape[ndim - 2] = shape[ndim - 2];
-    output_shape[ndim - 1] = other.shape[ndim - 1];
-    Tensor C(output_shape, ndim);
+    return out;
+}
 
-    // compute total batch size
-    int batch_size = 1;
-    for (int i = 0; i < ndim - 2; i++) {
-        batch_size *= output_shape[i];
+Tensor Tensor::div(float scalar) const {
+    assert(data != nullptr);
+
+    Tensor out = *this;
+
+    for (size_t i = 0; i < numel(); i++) {
+        out.data[i] /= scalar;
     }
 
-    int I = shape[ndim - 2];
-    // int J = other.shape[ndim - 1];
-    // int K = shape[ndim - 1];
-
-    int total_rows = batch_size * I;
-
-    if (thread_count == 0) {
-        thread_count = (static_cast<int>(std::thread::hardware_concurrency()) == 0) ? 1 : static_cast<int>(static_cast<int>(std::thread::hardware_concurrency()));
-    }
-
-    assert(thread_count > 0);
-
-    if (thread_count > total_rows) {
-        thread_count = total_rows;
-    }
-
-    std::vector<std::thread> threads;
-    threads.reserve(thread_count);
-
-    int rows_per_thread = total_rows / thread_count;
-    int remainder = total_rows % thread_count;
-
-    for (int i = 0; i < remainder; i++) {
-        threads.emplace_back(threaded_matmul_worker, std::cref(*this), std::cref(other), std::ref(C), (rows_per_thread * i) + i, (rows_per_thread * (i + 1)) + (i + 1));
-    }
-
-    for (int i = remainder; i < thread_count; i++) {
-        threads.emplace_back(threaded_matmul_worker, std::cref(*this), std::cref(other), std::ref(C), rows_per_thread * i + remainder, rows_per_thread * (i + 1) + remainder);
-    }
-
-    for (std::thread& thread : threads) {
-        thread.join();
-    }
-
-    return C;
+    return out;
 }
 
 Tensor Tensor::add(const Tensor& other) const {
@@ -419,6 +347,126 @@ Tensor Tensor::sub(const Tensor& other) const {
         }
     }
     
+    return C;
+}
+
+void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int start, int end) {
+    int ndim = A.ndim;
+
+    // strides for A, B, C
+    const int* stride_A = A.strides;
+    const int* stride_B = B.strides;
+    const int* stride_C = C.strides;
+
+    int I = A.shape[ndim - 2];
+    int J = B.shape[ndim - 1];
+    int K = A.shape[ndim - 1];
+
+    for (int task = start; task < end; task++) {
+        int offset_A = 0, offset_B = 0, offset_C = 0;
+        int temp = task / I;
+        int row = task % I;
+        for (int d = ndim - 3; d >= 0; d--) {
+            int index = temp % C.shape[d];
+            temp /= C.shape[d];
+            offset_C += index * stride_C[d];
+
+            bool A_broadcasted = A.shape[d] == 1 && C.shape[d] != 1;
+            bool B_broadcasted = B.shape[d] == 1 && C.shape[d] != 1;
+
+            if (!A_broadcasted) {
+                offset_A += index * stride_A[d];
+            }
+            if (!B_broadcasted) {
+                offset_B += index * stride_B[d];
+            }
+        }
+
+        const float* a_row = A.data + offset_A + row * stride_A[ndim - 2];
+        float* c_row = C.data + offset_C + row * stride_C[ndim - 2];
+        for (int k = 0; k < K; k++) {
+            float val_A = a_row[k * stride_A[ndim - 1]];
+            const float* b_row = B.data + offset_B + k * stride_B[ndim - 2];
+            for (int j = 0; j < J; j++) {
+                c_row[j * stride_C[ndim - 1]] += val_A * b_row[j * stride_B[ndim - 1]];
+            }
+        }
+
+    }
+}
+
+Tensor Tensor::matmul(const Tensor& other, int thread_count) const {
+    assert(ndim == other.ndim);
+    assert(ndim >= 2);
+    assert(shape[ndim - 1] == other.shape[ndim - 2]);
+    assert(data != nullptr && other.data != nullptr);
+
+    bool broadcast = false;
+    for (int i = 0; i < ndim - 2; i++) {
+        bool compatible = shape[i] != other.shape[i] && (shape[i] == 1 || other.shape[i] == 1);
+        if (compatible) broadcast = true;
+        assert(shape[i] == other.shape[i] || compatible);
+    }
+
+    int output_shape[8] = {0};
+    if (!broadcast) {
+        for (int i = 0; i < ndim - 2; i++) {
+            output_shape[i] = shape[i];
+        }
+    } else {
+        for (int i = 0; i < ndim - 2; i++) {
+            if (shape[i] != other.shape[i]) {
+                output_shape[i] = (other.shape[i] == 1) ? shape[i] : other.shape[i];
+                continue;
+            }
+            output_shape[i] = shape[i];
+        }
+    }
+
+    output_shape[ndim - 2] = shape[ndim - 2];
+    output_shape[ndim - 1] = other.shape[ndim - 1];
+    Tensor C(output_shape, ndim);
+
+    // compute total batch size
+    int batch_size = 1;
+    for (int i = 0; i < ndim - 2; i++) {
+        batch_size *= output_shape[i];
+    }
+
+    int I = shape[ndim - 2];
+    // int J = other.shape[ndim - 1];
+    // int K = shape[ndim - 1];
+
+    int total_rows = batch_size * I;
+
+    if (thread_count == 0) {
+        thread_count = (static_cast<int>(std::thread::hardware_concurrency()) == 0) ? 1 : static_cast<int>(static_cast<int>(std::thread::hardware_concurrency()));
+    }
+
+    assert(thread_count > 0);
+
+    if (thread_count > total_rows) {
+        thread_count = total_rows;
+    }
+
+    std::vector<std::thread> threads;
+    threads.reserve(thread_count);
+
+    int rows_per_thread = total_rows / thread_count;
+    int remainder = total_rows % thread_count;
+
+    for (int i = 0; i < remainder; i++) {
+        threads.emplace_back(threaded_matmul_worker, std::cref(*this), std::cref(other), std::ref(C), (rows_per_thread * i) + i, (rows_per_thread * (i + 1)) + (i + 1));
+    }
+
+    for (int i = remainder; i < thread_count; i++) {
+        threads.emplace_back(threaded_matmul_worker, std::cref(*this), std::cref(other), std::ref(C), rows_per_thread * i + remainder, rows_per_thread * (i + 1) + remainder);
+    }
+
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+
     return C;
 }
 
