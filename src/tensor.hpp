@@ -158,7 +158,7 @@ struct Tensor {
     bool is_contiguous() const;
 
     void init_contiguous_strides();
-    int compute_offset(int b, const int* strides, int skip_axis = -1) const;
+    int compute_offset(int b, int skip_axis = -1) const;
 
     float* data_ptr();
     const float* data_ptr() const;
@@ -179,6 +179,8 @@ struct Tensor {
     Tensor sub(const Tensor& other) const;
     Tensor matmul(const Tensor& other, int thread_count = 0) const;
     Tensor gelu() const;
+    Tensor layernorm(float eps = 1e-5f) const;
+    Tensor layernorm(const Tensor& gamma, const Tensor& beta, float eps = 1e-5f) const;
     Tensor softmax(int axis) const;
 
     // old/unused test ops

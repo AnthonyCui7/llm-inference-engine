@@ -46,7 +46,7 @@ void Tensor::init_contiguous_strides() {
     }
 }
 
-int Tensor::compute_offset(int b, const int* strides, int skip_axis) const {
+int Tensor::compute_offset(int b, int skip_axis) const {
     assert(skip_axis == -1 || (skip_axis >= 0 && skip_axis < ndim));
     int offset = 0;
     int tmp = b;
@@ -479,7 +479,99 @@ Tensor Tensor::gelu() const {
 
     for (size_t i = 0; i < numel(); i++) {
         float x = out.data[i];
-        out.data[i] = 0.5f * x * (1.0f + std::tanh(SQRT_2_OVER_PI * (x + 0.044715 * x * x * x)));
+        out.data[i] = 0.5f * x * (1.0f + std::tanh(SQRT_2_OVER_PI * (x + 0.044715f * x * x * x)));
+    }
+
+    return out;
+}
+
+Tensor Tensor::layernorm(float eps) const {
+    assert(data != nullptr);
+    assert(ndim >= 1);
+
+    Tensor out = *this;
+
+    int hidden_dim = shape[ndim - 1];
+    int hidden_stride = strides[ndim - 1];
+    int total_tokens = static_cast<int>(numel()) / hidden_dim;
+
+    for (int token = 0; token < total_tokens; token++) {
+        int offset = compute_offset(token, ndim - 1);
+
+        // find mean and variance
+        float sum = 0.0f;
+        float sum_squares = 0.0f;
+
+        float x;
+        for (int i = 0; i < hidden_dim; i++) {
+            x = data[offset + i * hidden_stride];
+            sum += x;
+            sum_squares += x * x;
+        }
+
+        float mean = sum / hidden_dim;
+        float var = (sum_squares / hidden_dim) - (mean * mean);
+        if (var < 0.0f) var = 0.0f;
+
+        // normalize
+        float inv_std = 1.0f / std::sqrt(var + eps);
+
+        for (int i = 0; i < hidden_dim; i++) {
+            out.data[offset + i * hidden_stride] =
+                (data[offset + i * hidden_stride] - mean)
+                * inv_std;
+        }
+    }
+
+    return out;
+}
+
+Tensor Tensor::layernorm(const Tensor& gamma, const Tensor& beta, float eps) const {
+    assert(data != nullptr);
+    assert(ndim >= 1);
+
+    int hidden_dim = shape[ndim - 1];
+    int hidden_stride = strides[ndim - 1];
+
+    assert(gamma.data != nullptr);
+    assert(beta.data != nullptr);
+    assert(gamma.ndim == 1);
+    assert(beta.ndim == 1);
+    assert(gamma.shape[0] == hidden_dim);
+    assert(beta.shape[0] == hidden_dim);
+
+    Tensor out = *this;
+
+    int total_tokens = static_cast<int>(numel()) / hidden_dim;
+
+    for (int token = 0; token < total_tokens; token++) {
+        int offset = compute_offset(token, ndim - 1);
+
+        // find mean and variance
+        float sum = 0.0f;
+        float sum_squares = 0.0f;
+
+        float x;
+        for (int i = 0; i < hidden_dim; i++) {
+            x = data[offset + i * hidden_stride];
+            sum += x;
+            sum_squares += x * x;
+        }
+
+        float mean = sum / hidden_dim;
+        float var = (sum_squares / hidden_dim) - (mean * mean);
+        if (var < 0.0f) var = 0.0f;
+
+        // normalize
+        float inv_std = 1.0f / std::sqrt(var + eps);
+
+        for (int i = 0; i < hidden_dim; i++) {
+            out.data[offset + i * hidden_stride] =
+                (gamma.data[i * gamma.strides[0]]
+                * (data[offset + i * hidden_stride] - mean))
+                * inv_std
+                + beta.data[i * beta.strides[0]];
+        }
     }
 
     return out;
@@ -501,7 +593,7 @@ Tensor Tensor::softmax(int axis) const {
     int axis_stride = strides[axis];
 
     for (int b = 0; b < batch_size; b++) {
-        int offset = compute_offset(b, strides, axis);
+        int offset = compute_offset(b, axis);
 
         // find max for numerical stability
         float max = data[offset];
