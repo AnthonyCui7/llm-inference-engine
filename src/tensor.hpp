@@ -178,6 +178,7 @@ struct Tensor {
     Tensor mul(const Tensor& other) const;
     Tensor sub(const Tensor& other) const;
     Tensor matmul(const Tensor& other, int thread_count = 0) const;
+    Tensor gelu() const;
     Tensor softmax(int axis) const;
 
     // old/unused test ops

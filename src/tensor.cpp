@@ -470,6 +470,21 @@ Tensor Tensor::matmul(const Tensor& other, int thread_count) const {
     return C;
 }
 
+Tensor Tensor::gelu() const {
+    assert(data != nullptr);
+
+    constexpr float SQRT_2_OVER_PI = 0.7978845608028654f;
+
+    Tensor out = *this;
+
+    for (size_t i = 0; i < numel(); i++) {
+        float x = out.data[i];
+        out.data[i] = 0.5f * x * (1.0f + std::tanh(SQRT_2_OVER_PI * (x + 0.044715 * x * x * x)));
+    }
+
+    return out;
+}
+
 Tensor Tensor::softmax(int axis) const {
     assert(axis >= 0 && axis < ndim);
     assert(data != nullptr);
