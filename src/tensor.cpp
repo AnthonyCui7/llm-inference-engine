@@ -615,6 +615,37 @@ Tensor Tensor::softmax(int axis) const {
     return out;
 }
 
+Tensor Tensor::embedding(const Tensor& token_ids) const {
+    assert(data != nullptr);
+    assert(ndim == 2);
+
+    assert(token_ids.data != nullptr);
+    assert(token_ids.ndim == 1);
+
+    int vocab_size = shape[0];
+    int hidden_dim = shape[1];
+    int total_tokens = token_ids.shape[0];
+
+    Tensor out({total_tokens, hidden_dim});
+
+    for (int i = 0; i < total_tokens; i++) {
+        assert(token_ids.data[i] == static_cast<int>(token_ids.data[i]));
+
+        int token_id = static_cast<int>(token_ids.data[i]);
+        assert(token_id >= 0);
+        assert(token_id < vocab_size);
+
+        int offset = token_id * strides[0];
+        int row = i * out.strides[0];
+
+        for (int j = 0; j < hidden_dim; j++) {
+            out.data[row + j * out.strides[1]] = data[offset + j * strides[1]];
+        }
+    }
+
+    return out;
+}
+
 float& Tensor::at(std::initializer_list<int> indices) {
     assert(indices.size() == static_cast<size_t>(ndim));
     assert(data != nullptr);
