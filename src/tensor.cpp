@@ -620,26 +620,35 @@ Tensor Tensor::embedding(const Tensor& token_ids) const {
     assert(ndim == 2);
 
     assert(token_ids.data != nullptr);
-    assert(token_ids.ndim == 1);
+    assert(token_ids.ndim == 2);
 
     int vocab_size = shape[0];
     int hidden_dim = shape[1];
-    int total_tokens = token_ids.shape[0];
+    int batches = token_ids.shape[0];
+    int total_tokens = token_ids.shape[1];
 
-    Tensor out({total_tokens, hidden_dim});
+    Tensor out({batches, total_tokens, hidden_dim});
 
-    for (int i = 0; i < total_tokens; i++) {
-        assert(token_ids.data[i] == static_cast<int>(token_ids.data[i]));
+    for (int b = 0; b < batches; b++) {
+        int token_batch = b * token_ids.strides[0];
+        int out_batch = b * out.strides[0];
 
-        int token_id = static_cast<int>(token_ids.data[i]);
-        assert(token_id >= 0);
-        assert(token_id < vocab_size);
+        for (int i = 0; i < total_tokens; i++) {
+            int token_offset = token_batch + i * token_ids.strides[1];
+            float token_value = token_ids.data[token_offset];
 
-        int offset = token_id * strides[0];
-        int row = i * out.strides[0];
+            assert(token_value == static_cast<int>(token_value));
 
-        for (int j = 0; j < hidden_dim; j++) {
-            out.data[row + j * out.strides[1]] = data[offset + j * strides[1]];
+            int token_id = static_cast<int>(token_value);
+            assert(token_id >= 0);
+            assert(token_id < vocab_size);
+
+            int embedding_offset = token_id * strides[0];
+            int out_row = i * out.strides[1];
+
+            for (int j = 0; j < hidden_dim; j++) {
+                out.data[out_batch + out_row + j * out.strides[2]] = data[embedding_offset + j * strides[1]];
+            }
         }
     }
 
