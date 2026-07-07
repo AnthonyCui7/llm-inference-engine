@@ -656,8 +656,10 @@ Tensor Tensor::embedding(const Tensor& token_ids) const {
 }
 
 Tensor Tensor::reshape(std::initializer_list<int> new_shape) const {
-    Tensor out(new_shape);
+    assert(data != nullptr);
+    assert(is_contiguous());
 
+    Tensor out(new_shape);
     assert(out.numel() == numel());
     
     for (size_t i = 0; i < numel(); i++) {
@@ -668,6 +670,7 @@ Tensor Tensor::reshape(std::initializer_list<int> new_shape) const {
 }
 
 Tensor Tensor::transpose(int axis1, int axis2) const {
+    assert(data != nullptr);
     assert(axis1 >= 0 && axis1 < ndim);
     assert(axis2 >= 0 && axis2 < ndim);
     assert(axis1 != axis2);
@@ -686,7 +689,7 @@ Tensor Tensor::transpose(int axis1, int axis2) const {
     transposed_strides[axis1] = transposed_strides[axis2];
     transposed_strides[axis2] = temp;
 
-    for (size_t elem = 0; elem < numel(); elem++) {
+    for (size_t elem = 0; elem < out.numel(); elem++) {
         int offset = 0;
         temp = static_cast<int>(elem);
 
