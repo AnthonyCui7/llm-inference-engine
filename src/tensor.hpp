@@ -183,6 +183,8 @@ struct Tensor {
     Tensor layernorm(const Tensor& gamma, const Tensor& beta, float eps = 1e-5f) const;
     Tensor softmax(int axis) const;
     Tensor embedding(const Tensor& token_ids) const;
+    Tensor reshape(std::initializer_list<int> new_shape) const;
+    Tensor transpose(int axis1, int axis2) const;
 
     // old/unused test ops
     float& at(std::initializer_list<int> indices);

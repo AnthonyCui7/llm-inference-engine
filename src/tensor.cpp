@@ -655,6 +655,53 @@ Tensor Tensor::embedding(const Tensor& token_ids) const {
     return out;
 }
 
+Tensor Tensor::reshape(std::initializer_list<int> new_shape) const {
+    Tensor out(new_shape);
+
+    assert(out.numel() == numel());
+    
+    for (size_t i = 0; i < numel(); i++) {
+        out.data[i] = data[i];
+    }
+
+    return out;
+}
+
+Tensor Tensor::transpose(int axis1, int axis2) const {
+    assert(axis1 >= 0 && axis1 < ndim);
+    assert(axis2 >= 0 && axis2 < ndim);
+    assert(axis1 != axis2);
+
+    Tensor out = *this;
+
+    int temp = out.shape[axis1];
+    out.shape[axis1] = out.shape[axis2];
+    out.shape[axis2] = temp;
+
+    out.init_contiguous_strides();
+
+    int transposed_strides[8];
+    std::memcpy(transposed_strides, strides, sizeof(strides));
+    temp = transposed_strides[axis1];
+    transposed_strides[axis1] = transposed_strides[axis2];
+    transposed_strides[axis2] = temp;
+
+    for (size_t elem = 0; elem < numel(); elem++) {
+        int offset = 0;
+        temp = static_cast<int>(elem);
+
+        for (int d = ndim - 1; d >= 0; d--) {
+            int idx = temp % out.shape[d];
+            temp /= out.shape[d];
+            offset += idx * transposed_strides[d];
+        }
+        
+        out.data[elem] = data[offset];
+    }
+
+    return out;
+}
+
 float& Tensor::at(std::initializer_list<int> indices) {
     assert(indices.size() == static_cast<size_t>(ndim));
     assert(data != nullptr);
