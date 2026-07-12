@@ -4,6 +4,13 @@
 #include <vector>
 
 #include "tensor.hpp"
+#include "thread_pool.hpp"
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#include <arm_neon.h>
+#elif defined(__AVX2__) && defined(__FMA__)
+#include <immintrin.h>
+#endif
 
 size_t Tensor::numel() const {
     if (ndim == 0) return 0;
@@ -350,6 +357,141 @@ Tensor Tensor::sub(const Tensor& other) const {
     return C;
 }
 
+/*
+SIMD kernel for one output row of a matmul: c[j] += sum over k of a[k] * b[k][j].
+Requires contiguous B and C rows; A's column stride can be anything. Walks 4 rows of B
+at a time, so B is read sequentially and the C row is only loaded/stored once per 4 k's.
+Per-element accumulation stays in ascending k order, so output matches the scalar path.
+NEON and AVX2 versions, scalar fallback elsewhere.
+*/
+static void matmul_row_kernel(const float* a_row, int a_stride,
+                              const float* B, int b_row_stride,
+                              float* c_row, int K, int J) {
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    int k = 0;
+    for (; k + 4 <= K; k += 4) {
+        float32x4_t a0 = vdupq_n_f32(a_row[k * a_stride]);
+        float32x4_t a1 = vdupq_n_f32(a_row[(k + 1) * a_stride]);
+        float32x4_t a2 = vdupq_n_f32(a_row[(k + 2) * a_stride]);
+        float32x4_t a3 = vdupq_n_f32(a_row[(k + 3) * a_stride]);
+        const float* b0 = B + k * b_row_stride;
+        const float* b1 = b0 + b_row_stride;
+        const float* b2 = b1 + b_row_stride;
+        const float* b3 = b2 + b_row_stride;
+
+        int j = 0;
+        for (; j + 8 <= J; j += 8) {
+            float32x4_t c0 = vld1q_f32(c_row + j);
+            float32x4_t c1 = vld1q_f32(c_row + j + 4);
+            c0 = vfmaq_f32(c0, a0, vld1q_f32(b0 + j));
+            c1 = vfmaq_f32(c1, a0, vld1q_f32(b0 + j + 4));
+            c0 = vfmaq_f32(c0, a1, vld1q_f32(b1 + j));
+            c1 = vfmaq_f32(c1, a1, vld1q_f32(b1 + j + 4));
+            c0 = vfmaq_f32(c0, a2, vld1q_f32(b2 + j));
+            c1 = vfmaq_f32(c1, a2, vld1q_f32(b2 + j + 4));
+            c0 = vfmaq_f32(c0, a3, vld1q_f32(b3 + j));
+            c1 = vfmaq_f32(c1, a3, vld1q_f32(b3 + j + 4));
+            vst1q_f32(c_row + j, c0);
+            vst1q_f32(c_row + j + 4, c1);
+        }
+        for (; j + 4 <= J; j += 4) {
+            float32x4_t c0 = vld1q_f32(c_row + j);
+            c0 = vfmaq_f32(c0, a0, vld1q_f32(b0 + j));
+            c0 = vfmaq_f32(c0, a1, vld1q_f32(b1 + j));
+            c0 = vfmaq_f32(c0, a2, vld1q_f32(b2 + j));
+            c0 = vfmaq_f32(c0, a3, vld1q_f32(b3 + j));
+            vst1q_f32(c_row + j, c0);
+        }
+        for (; j < J; j++) {
+            float sum = c_row[j];
+            sum += a_row[k * a_stride] * b0[j];
+            sum += a_row[(k + 1) * a_stride] * b1[j];
+            sum += a_row[(k + 2) * a_stride] * b2[j];
+            sum += a_row[(k + 3) * a_stride] * b3[j];
+            c_row[j] = sum;
+        }
+    }
+    for (; k < K; k++) {
+        float32x4_t a0 = vdupq_n_f32(a_row[k * a_stride]);
+        const float* b0 = B + k * b_row_stride;
+        int j = 0;
+        for (; j + 4 <= J; j += 4) {
+            float32x4_t c0 = vld1q_f32(c_row + j);
+            c0 = vfmaq_f32(c0, a0, vld1q_f32(b0 + j));
+            vst1q_f32(c_row + j, c0);
+        }
+        for (; j < J; j++) {
+            c_row[j] += a_row[k * a_stride] * b0[j];
+        }
+    }
+#elif defined(__AVX2__) && defined(__FMA__)
+    int k = 0;
+    for (; k + 4 <= K; k += 4) {
+        __m256 a0 = _mm256_set1_ps(a_row[k * a_stride]);
+        __m256 a1 = _mm256_set1_ps(a_row[(k + 1) * a_stride]);
+        __m256 a2 = _mm256_set1_ps(a_row[(k + 2) * a_stride]);
+        __m256 a3 = _mm256_set1_ps(a_row[(k + 3) * a_stride]);
+        const float* b0 = B + k * b_row_stride;
+        const float* b1 = b0 + b_row_stride;
+        const float* b2 = b1 + b_row_stride;
+        const float* b3 = b2 + b_row_stride;
+
+        int j = 0;
+        for (; j + 16 <= J; j += 16) {
+            __m256 c0 = _mm256_loadu_ps(c_row + j);
+            __m256 c1 = _mm256_loadu_ps(c_row + j + 8);
+            c0 = _mm256_fmadd_ps(a0, _mm256_loadu_ps(b0 + j), c0);
+            c1 = _mm256_fmadd_ps(a0, _mm256_loadu_ps(b0 + j + 8), c1);
+            c0 = _mm256_fmadd_ps(a1, _mm256_loadu_ps(b1 + j), c0);
+            c1 = _mm256_fmadd_ps(a1, _mm256_loadu_ps(b1 + j + 8), c1);
+            c0 = _mm256_fmadd_ps(a2, _mm256_loadu_ps(b2 + j), c0);
+            c1 = _mm256_fmadd_ps(a2, _mm256_loadu_ps(b2 + j + 8), c1);
+            c0 = _mm256_fmadd_ps(a3, _mm256_loadu_ps(b3 + j), c0);
+            c1 = _mm256_fmadd_ps(a3, _mm256_loadu_ps(b3 + j + 8), c1);
+            _mm256_storeu_ps(c_row + j, c0);
+            _mm256_storeu_ps(c_row + j + 8, c1);
+        }
+        for (; j + 8 <= J; j += 8) {
+            __m256 c0 = _mm256_loadu_ps(c_row + j);
+            c0 = _mm256_fmadd_ps(a0, _mm256_loadu_ps(b0 + j), c0);
+            c0 = _mm256_fmadd_ps(a1, _mm256_loadu_ps(b1 + j), c0);
+            c0 = _mm256_fmadd_ps(a2, _mm256_loadu_ps(b2 + j), c0);
+            c0 = _mm256_fmadd_ps(a3, _mm256_loadu_ps(b3 + j), c0);
+            _mm256_storeu_ps(c_row + j, c0);
+        }
+        for (; j < J; j++) {
+            float sum = c_row[j];
+            sum += a_row[k * a_stride] * b0[j];
+            sum += a_row[(k + 1) * a_stride] * b1[j];
+            sum += a_row[(k + 2) * a_stride] * b2[j];
+            sum += a_row[(k + 3) * a_stride] * b3[j];
+            c_row[j] = sum;
+        }
+    }
+    for (; k < K; k++) {
+        __m256 a0 = _mm256_set1_ps(a_row[k * a_stride]);
+        const float* b0 = B + k * b_row_stride;
+        int j = 0;
+        for (; j + 8 <= J; j += 8) {
+            __m256 c0 = _mm256_loadu_ps(c_row + j);
+            c0 = _mm256_fmadd_ps(a0, _mm256_loadu_ps(b0 + j), c0);
+            _mm256_storeu_ps(c_row + j, c0);
+        }
+        for (; j < J; j++) {
+            c_row[j] += a_row[k * a_stride] * b0[j];
+        }
+    }
+#else
+    for (int k = 0; k < K; k++) {
+        float val_A = a_row[k * a_stride];
+        const float* b_row = B + k * b_row_stride;
+        for (int j = 0; j < J; j++) {
+            c_row[j] += val_A * b_row[j];
+        }
+    }
+#endif
+}
+
 void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int start, int end) {
     int ndim = A.ndim;
 
@@ -361,6 +503,9 @@ void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int sta
     int I = A.shape[ndim - 2];
     int J = B.shape[ndim - 1];
     int K = A.shape[ndim - 1];
+
+    // the SIMD row kernel needs contiguous B and C rows
+    bool inner_contiguous = stride_B[ndim - 1] == 1 && stride_C[ndim - 1] == 1;
 
     for (int task = start; task < end; task++) {
         int offset_A = 0, offset_B = 0, offset_C = 0;
@@ -384,6 +529,12 @@ void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int sta
 
         const float* a_row = A.data + offset_A + row * stride_A[ndim - 2];
         float* c_row = C.data + offset_C + row * stride_C[ndim - 2];
+
+        if (inner_contiguous) {
+            matmul_row_kernel(a_row, stride_A[ndim - 1], B.data + offset_B, stride_B[ndim - 2], c_row, K, J);
+            continue;
+        }
+
         for (int k = 0; k < K; k++) {
             float val_A = a_row[k * stride_A[ndim - 1]];
             const float* b_row = B.data + offset_B + k * stride_B[ndim - 2];
@@ -439,33 +590,12 @@ Tensor Tensor::matmul(const Tensor& other, int thread_count) const {
 
     int total_rows = batch_size * I;
 
-    if (thread_count == 0) {
-        thread_count = (static_cast<int>(std::thread::hardware_concurrency()) == 0) ? 1 : static_cast<int>(static_cast<int>(std::thread::hardware_concurrency()));
-    }
+    // thread_count caps the parallelism; 0 uses every pool lane
+    assert(thread_count >= 0);
 
-    assert(thread_count > 0);
-
-    if (thread_count > total_rows) {
-        thread_count = total_rows;
-    }
-
-    std::vector<std::thread> threads;
-    threads.reserve(thread_count);
-
-    int rows_per_thread = total_rows / thread_count;
-    int remainder = total_rows % thread_count;
-
-    for (int i = 0; i < remainder; i++) {
-        threads.emplace_back(threaded_matmul_worker, std::cref(*this), std::cref(other), std::ref(C), (rows_per_thread * i) + i, (rows_per_thread * (i + 1)) + (i + 1));
-    }
-
-    for (int i = remainder; i < thread_count; i++) {
-        threads.emplace_back(threaded_matmul_worker, std::cref(*this), std::cref(other), std::ref(C), rows_per_thread * i + remainder, rows_per_thread * (i + 1) + remainder);
-    }
-
-    for (std::thread& thread : threads) {
-        thread.join();
-    }
+    ThreadPool::instance().parallel_for(total_rows, thread_count, [this, &other, &C](int start, int end) {
+        threaded_matmul_worker(*this, other, C, start, end);
+    });
 
     return C;
 }
@@ -741,12 +871,15 @@ Tensor Tensor::matmul_naive(const Tensor& other) const {
         for (int i = 0; i < I; i++) {
             const float* a_row = data + i * K;
             float* c_row = C.data + i * J;
-            for (int k = 0; k < K; k++) {
-                float val_A = a_row[k];
-                const float* b_row = other.data + k * J;
-                for (int j = 0; j < J; j++) {
-                    c_row[j] += val_A * b_row[j];
+
+            for (int j = 0; j < J; j++) {
+                float sum = 0.0f;
+
+                for (int k = 0; k < K; k++) {
+                    sum += a_row[k] * other.data[k * J + j];
                 }
+
+                c_row[j] += sum;
             }
         }
 

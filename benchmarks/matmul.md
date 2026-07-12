@@ -4,6 +4,7 @@
 
 Compiler: `clang++`
 Benchmark flags: `-std=c++17 -Wall -Wextra -Wpedantic -Isrc -O3 -march=native -DNDEBUG`
+Machine: Apple M3 Pro (5P + 6E cores, 11 hardware threads)
 
 For benchmark code, see `bench_matmul.cpp`.
 
@@ -12,6 +13,8 @@ For benchmark code, see `bench_matmul.cpp`.
 - Warmup iterations are excluded from timing
 - FLOPs estimate: `2 * N^3`
 - Output correctness sanity check: checksum
+- Kernel is selectable: `bench_matmul [matmul|naive]`
+- For N <= 1024, output is also checked elementwise against `matmul_naive` (`max_diff_vs_naive`)
 
 Iterations:
 ```text
@@ -114,4 +117,40 @@ N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.7594, gflop/s = 152.572, check
 N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.626, gflop/s = 157.602, checksum = 39.296, warmup_checksum = 9.82399
 N = 2048, iters = 4, warmup_iters = 1, avg_ms = 100.561, gflop/s = 170.84, checksum = 39.2923, warmup_checksum = 9.82308
 N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1300.96, gflop/s = 105.644, checksum = 58.9486, warmup_checksum = 19.6495
+```
+
+## Batched matmul, thread spawn per call, threads = 11 (default)
+
+```text
+kernel = matmul, N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.0930399, gflop/s = 5.63509, checksum = 137.625, warmup_checksum = 34.4064, max_diff_vs_naive = 0
+kernel = matmul, N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0862887, gflop/s = 48.6078, checksum = 152.013, warmup_checksum = 38.0032, max_diff_vs_naive = 0
+kernel = matmul, N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.330342, gflop/s = 101.575, checksum = 77.376, warmup_checksum = 19.344, max_diff_vs_naive = 0
+kernel = matmul, N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.79047, gflop/s = 149.925, checksum = 39.0672, warmup_checksum = 9.7668, max_diff_vs_naive = 0
+kernel = matmul, N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.6878, gflop/s = 156.891, checksum = 39.296, warmup_checksum = 9.82399, max_diff_vs_naive = 0
+kernel = matmul, N = 2048, iters = 4, warmup_iters = 1, avg_ms = 105.254, gflop/s = 163.223, checksum = 39.2923, warmup_checksum = 9.82308
+kernel = matmul, N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1278.37, gflop/s = 107.511, checksum = 58.9486, warmup_checksum = 19.6495
+```
+
+## Batched matmul, persistent thread pool, threads = 11 (default)
+
+```text
+kernel = matmul, N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.0307115, gflop/s = 17.0714, checksum = 137.625, warmup_checksum = 34.4064, max_diff_vs_naive = 0
+kernel = matmul, N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0443994, gflop/s = 94.4676, checksum = 152.013, warmup_checksum = 38.0032, max_diff_vs_naive = 0
+kernel = matmul, N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.283855, gflop/s = 118.21, checksum = 77.376, warmup_checksum = 19.344, max_diff_vs_naive = 0
+kernel = matmul, N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.74678, gflop/s = 153.674, checksum = 39.0672, warmup_checksum = 9.7668, max_diff_vs_naive = 0
+kernel = matmul, N = 1024, iters = 8, warmup_iters = 2, avg_ms = 13.75, gflop/s = 156.181, checksum = 39.296, warmup_checksum = 9.82399, max_diff_vs_naive = 0
+kernel = matmul, N = 2048, iters = 4, warmup_iters = 1, avg_ms = 106.676, gflop/s = 161.047, checksum = 39.2923, warmup_checksum = 9.82308
+kernel = matmul, N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1383.69, gflop/s = 99.3276, checksum = 58.9486, warmup_checksum = 19.6495
+```
+
+## Batched matmul, persistent thread pool + SIMD row kernel, threads = 11 (default)
+
+```text
+kernel = matmul, N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.0337056, gflop/s = 15.5549, checksum = 137.625, warmup_checksum = 34.4064, max_diff_vs_naive = 0
+kernel = matmul, N = 128, iters = 256, warmup_iters = 64, avg_ms = 0.0440474, gflop/s = 95.2226, checksum = 152.013, warmup_checksum = 38.0032, max_diff_vs_naive = 0
+kernel = matmul, N = 256, iters = 64, warmup_iters = 16, avg_ms = 0.236398, gflop/s = 141.941, checksum = 77.376, warmup_checksum = 19.344, max_diff_vs_naive = 0
+kernel = matmul, N = 512, iters = 16, warmup_iters = 4, avg_ms = 1.29867, gflop/s = 206.7, checksum = 39.0672, warmup_checksum = 9.7668, max_diff_vs_naive = 0
+kernel = matmul, N = 1024, iters = 8, warmup_iters = 2, avg_ms = 10.5165, gflop/s = 204.201, checksum = 39.296, warmup_checksum = 9.82399, max_diff_vs_naive = 0
+kernel = matmul, N = 2048, iters = 4, warmup_iters = 1, avg_ms = 103.412, gflop/s = 166.131, checksum = 39.2923, warmup_checksum = 9.82308
+kernel = matmul, N = 4096, iters = 3, warmup_iters = 1, avg_ms = 1516.32, gflop/s = 90.6399, checksum = 58.9486, warmup_checksum = 19.6495
 ```
