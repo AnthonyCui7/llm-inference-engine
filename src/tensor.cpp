@@ -492,7 +492,7 @@ static void matmul_row_kernel(const float* a_row, int a_stride,
 #endif
 }
 
-void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int start, int end) {
+void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int k_start, int k_len, int start, int end) {
     int ndim = A.ndim;
 
     // strides for A, B, C
@@ -502,7 +502,6 @@ void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int sta
 
     int I = A.shape[ndim - 2];
     int J = B.shape[ndim - 1];
-    int K = A.shape[ndim - 1];
 
     // the SIMD row kernel needs contiguous B and C rows
     bool inner_contiguous = stride_B[ndim - 1] == 1 && stride_C[ndim - 1] == 1;
@@ -527,17 +526,18 @@ void threaded_matmul_worker(const Tensor& A, const Tensor& B, Tensor& C, int sta
             }
         }
 
-        const float* a_row = A.data + offset_A + row * stride_A[ndim - 2];
+        const float* a_row = A.data + offset_A + row * stride_A[ndim - 2] + k_start * stride_A[ndim - 1];
+        const float* b_block = B.data + offset_B + k_start * stride_B[ndim - 2];
         float* c_row = C.data + offset_C + row * stride_C[ndim - 2];
 
         if (inner_contiguous) {
-            matmul_row_kernel(a_row, stride_A[ndim - 1], B.data + offset_B, stride_B[ndim - 2], c_row, K, J);
+            matmul_row_kernel(a_row, stride_A[ndim - 1], b_block, stride_B[ndim - 2], c_row, k_len, J);
             continue;
         }
 
-        for (int k = 0; k < K; k++) {
+        for (int k = 0; k < k_len; k++) {
             float val_A = a_row[k * stride_A[ndim - 1]];
-            const float* b_row = B.data + offset_B + k * stride_B[ndim - 2];
+            const float* b_row = b_block + k * stride_B[ndim - 2];
             for (int j = 0; j < J; j++) {
                 c_row[j * stride_C[ndim - 1]] += val_A * b_row[j * stride_B[ndim - 1]];
             }
@@ -585,17 +585,25 @@ Tensor Tensor::matmul(const Tensor& other, int thread_count) const {
     }
 
     int I = shape[ndim - 2];
+    int K = shape[ndim - 1];
     // int J = other.shape[ndim - 1];
-    // int K = shape[ndim - 1];
 
     int total_rows = batch_size * I;
 
     // thread_count caps the parallelism; 0 uses every pool lane
     assert(thread_count >= 0);
 
-    ThreadPool::instance().parallel_for(total_rows, thread_count, [this, &other, &C](int start, int end) {
-        threaded_matmul_worker(*this, other, C, start, end);
-    });
+    // block over k so each block of B stays cache resident while every row reuses it,
+    // instead of streaming all of B once per output row
+    const int k_block = 256;
+
+    for (int k_start = 0; k_start < K; k_start += k_block) {
+        int k_len = (K - k_start < k_block) ? K - k_start : k_block;
+
+        ThreadPool::instance().parallel_for(total_rows, thread_count, [this, &other, &C, k_start, k_len](int start, int end) {
+            threaded_matmul_worker(*this, other, C, k_start, k_len, start, end);
+        });
+    }
 
     return C;
 }

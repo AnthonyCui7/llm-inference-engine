@@ -226,6 +226,24 @@ int main() {
     assert(matmul_out_4d.at({1, 0, 1, 0}) == 301);
     assert(matmul_out_4d.at({1, 0, 1, 1}) == 334);
 
+    // test matmul against naive with K crossing the k block boundary and odd J
+    Tensor matmul_lhs_wide({3, 301});
+    Tensor matmul_rhs_wide({301, 5});
+
+    for (size_t i = 0; i < matmul_lhs_wide.numel(); i++) {
+        matmul_lhs_wide.data[i] = (static_cast<int>(i % 23) - 11) * 0.125f;
+    }
+    for (size_t i = 0; i < matmul_rhs_wide.numel(); i++) {
+        matmul_rhs_wide.data[i] = (static_cast<int>(i % 19) - 9) * 0.0625f;
+    }
+
+    Tensor matmul_out_wide = matmul_lhs_wide.matmul(matmul_rhs_wide);
+    Tensor matmul_gold_wide = matmul_lhs_wide.matmul_naive(matmul_rhs_wide);
+
+    for (size_t i = 0; i < matmul_gold_wide.numel(); i++) {
+        assert(matmul_out_wide.data[i] == matmul_gold_wide.data[i]);
+    }
+
     // test softmax
     Tensor softmax_input = Tensor::from_data({2, 3}, {
         1, 2, 3,
