@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "tensor.hpp"
+#include "attention.hpp"
 
 int main() {
     // test default tensor
@@ -282,6 +283,49 @@ int main() {
     assert(std::abs(softmax_axis0_out.at({0, 0}) + softmax_axis0_out.at({1, 0}) - 1.0f) < 1e-5f);
     assert(std::abs(softmax_axis0_out.at({0, 1}) + softmax_axis0_out.at({1, 1}) - 1.0f) < 1e-5f);
     assert(std::abs(softmax_axis0_out.at({0, 2}) + softmax_axis0_out.at({1, 2}) - 1.0f) < 1e-5f);
+
+    // test causal scaled dot product attention
+    Tensor attn_q = Tensor::from_data({2, 2}, {1, 0, 0, 1});
+    Tensor attn_k = Tensor::from_data({2, 2}, {1, 0, 0, 1});
+    Tensor attn_v = Tensor::from_data({2, 2}, {1, 2, 3, 4});
+
+    Tensor attn_out = scaled_dot_product_attention(attn_q, attn_k, attn_v);
+
+    // row 0 attends only to itself, row 1 weights = softmax(0, 1/sqrt(2))
+    assert(attn_out.at({0, 0}) == 1);
+    assert(attn_out.at({0, 1}) == 2);
+    assert(std::abs(attn_out.at({1, 0}) - 2.3395231f) < 1e-5f);
+    assert(std::abs(attn_out.at({1, 1}) - 3.3395231f) < 1e-5f);
+
+    // test multi head attention with one head matches single head attention exactly
+    Tensor mha_q = Tensor::from_data({1, 2, 2}, {1, 0, 0, 1});
+    Tensor mha_k = Tensor::from_data({1, 2, 2}, {1, 0, 0, 1});
+    Tensor mha_v = Tensor::from_data({1, 2, 2}, {1, 2, 3, 4});
+
+    Tensor mha_out_single = multi_head_attention(mha_q, mha_k, mha_v, 1);
+
+    assert(mha_out_single.ndim == 3);
+    assert(mha_out_single.numel() == attn_out.numel());
+
+    for (size_t i = 0; i < attn_out.numel(); i++) {
+        assert(mha_out_single.data[i] == attn_out.data[i]);
+    }
+
+    // test two heads, each head fed the same values as the single head case,
+    // so both halves of every output row must match the single head output
+    Tensor mha_q2 = Tensor::from_data({1, 2, 4}, {1, 0, 1, 0, 0, 1, 0, 1});
+    Tensor mha_k2 = Tensor::from_data({1, 2, 4}, {1, 0, 1, 0, 0, 1, 0, 1});
+    Tensor mha_v2 = Tensor::from_data({1, 2, 4}, {1, 2, 1, 2, 3, 4, 3, 4});
+
+    Tensor mha_out_two = multi_head_attention(mha_q2, mha_k2, mha_v2, 2);
+
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            float expected = attn_out.at({i, j});
+            assert(std::abs(mha_out_two.at({0, i, j}) - expected) < 1e-5f);
+            assert(std::abs(mha_out_two.at({0, i, j + 2}) - expected) < 1e-5f);
+        }
+    }
 
     std::cout << "All tensor tests passed" << std::endl;
 
