@@ -327,6 +327,44 @@ int main() {
         }
     }
 
+    // test self attention with identity projections matches multi head attention exactly
+    Tensor sa_x = Tensor::from_data({1, 2, 2}, {1, 2, 3, 4});
+    Tensor sa_eye = Tensor::from_data({2, 2}, {1, 0, 0, 1});
+
+    Tensor sa_out = self_attention(sa_x, sa_eye, sa_eye, sa_eye, sa_eye, 1);
+    Tensor sa_expected = multi_head_attention(sa_x, sa_x, sa_x, 1);
+
+    assert(sa_out.ndim == 3);
+    assert(sa_out.shape[0] == 1 && sa_out.shape[1] == 2 && sa_out.shape[2] == 2);
+
+    for (size_t i = 0; i < sa_expected.numel(); i++) {
+        assert(sa_out.data[i] == sa_expected.data[i]);
+    }
+
+    // doubling the value projection doubles the output exactly, since the
+    // attention weights only depend on q and k
+    Tensor sa_eye_doubled = Tensor::from_data({2, 2}, {2, 0, 0, 2});
+    Tensor sa_out_doubled = self_attention(sa_x, sa_eye, sa_eye, sa_eye_doubled, sa_eye, 1);
+
+    for (size_t i = 0; i < sa_out.numel(); i++) {
+        assert(sa_out_doubled.data[i] == 2 * sa_out.data[i]);
+    }
+
+    // test the attention block reduces to the bare residual when the output
+    // projection is zero; would fail if the residual added layernorm(x) instead of x
+    Tensor block_gamma = Tensor::ones({2});
+    Tensor block_beta = Tensor::zeros({2});
+    Tensor block_w_o_zero = Tensor::zeros({2, 2});
+
+    Tensor block_out = attention_block(sa_x, block_gamma, block_beta, sa_eye, sa_eye, sa_eye, block_w_o_zero, 1);
+
+    assert(block_out.ndim == 3);
+    assert(block_out.shape[0] == 1 && block_out.shape[1] == 2 && block_out.shape[2] == 2);
+
+    for (size_t i = 0; i < sa_x.numel(); i++) {
+        assert(block_out.data[i] == sa_x.data[i]);
+    }
+
     std::cout << "All tensor tests passed" << std::endl;
 
     return 0;

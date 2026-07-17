@@ -63,3 +63,39 @@ Tensor multi_head_attention(const Tensor& query, const Tensor& key, const Tensor
     // [batch, num_heads, seq, head_dim] -> [batch, seq, hidden]
     return heads_out.transpose(1, 2).reshape({batch, seq, hidden});
 }
+
+Tensor self_attention(const Tensor& x, const Tensor& w_q, const Tensor& w_k,
+                      const Tensor& w_v, const Tensor& w_o, int num_heads) {
+    assert(x.ndim == 3);
+
+    int batch = x.shape[0];
+    int seq = x.shape[1];
+    int hidden = x.shape[2];
+
+    assert(w_q.ndim == 2 && w_q.shape[0] == hidden && w_q.shape[1] == hidden);
+    assert(w_k.ndim == 2 && w_k.shape[0] == hidden && w_k.shape[1] == hidden);
+    assert(w_v.ndim == 2 && w_v.shape[0] == hidden && w_v.shape[1] == hidden);
+    assert(w_o.ndim == 2 && w_o.shape[0] == hidden && w_o.shape[1] == hidden);
+
+    // projections as 2d matmuls over the flattened [batch * seq, hidden] rows
+    Tensor flat = x.reshape({batch * seq, hidden});
+    Tensor q = flat.matmul(w_q).reshape({batch, seq, hidden});
+    Tensor k = flat.matmul(w_k).reshape({batch, seq, hidden});
+    Tensor v = flat.matmul(w_v).reshape({batch, seq, hidden});
+
+    Tensor heads_out = multi_head_attention(q, k, v, num_heads);
+
+    return heads_out.reshape({batch * seq, hidden}).matmul(w_o).reshape({batch, seq, hidden});
+}
+
+Tensor attention_block(const Tensor& x, const Tensor& gamma, const Tensor& beta,
+                       const Tensor& w_q, const Tensor& w_k, const Tensor& w_v,
+                       const Tensor& w_o, int num_heads) {
+    assert(x.ndim == 3);
+
+    // pre layernorm: normalize the input, attend, add back the unnormalized residual
+    Tensor normed = x.layernorm(gamma, beta);
+    Tensor attn = self_attention(normed, w_q, w_k, w_v, w_o, num_heads);
+
+    return x.add(attn);
+}
