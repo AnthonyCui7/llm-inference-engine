@@ -5,6 +5,7 @@
 
 #include "tensor.hpp"
 #include "attention.hpp"
+#include "transformer.hpp"
 
 int main() {
     // test default tensor
@@ -364,6 +365,64 @@ int main() {
     for (size_t i = 0; i < sa_x.numel(); i++) {
         assert(block_out.data[i] == sa_x.data[i]);
     }
+
+    // test the mlp block: identity weights reduce it to x + gelu(layernorm(x)),
+    // and layernorm maps every row of sa_x to roughly [-1, 1]
+    Tensor mlp_out = mlp_block(sa_x, block_gamma, block_beta, sa_eye, sa_eye);
+
+    assert(mlp_out.ndim == 3);
+    assert(std::abs(mlp_out.at({0, 0, 0}) - 0.8411920f) < 1e-4f);
+    assert(std::abs(mlp_out.at({0, 0, 1}) - 2.8411920f) < 1e-4f);
+    assert(std::abs(mlp_out.at({0, 1, 0}) - 2.8411920f) < 1e-4f);
+    assert(std::abs(mlp_out.at({0, 1, 1}) - 4.8411920f) < 1e-4f);
+
+    // zero second linear reduces the mlp block to the bare residual
+    Tensor mlp_out_zero = mlp_block(sa_x, block_gamma, block_beta, sa_eye, block_w_o_zero);
+
+    for (size_t i = 0; i < sa_x.numel(); i++) {
+        assert(mlp_out_zero.data[i] == sa_x.data[i]);
+    }
+
+    // test the full transformer block and stacking: zeroing both output
+    // projections makes every block a no-op, so input round trips unchanged
+    TransformerBlockWeights noop_block;
+    noop_block.attn_gamma = Tensor::ones({2});
+    noop_block.attn_beta = Tensor::zeros({2});
+    noop_block.w_q = sa_eye;
+    noop_block.w_k = sa_eye;
+    noop_block.w_v = sa_eye;
+    noop_block.w_o = Tensor::zeros({2, 2});
+    noop_block.mlp_gamma = Tensor::ones({2});
+    noop_block.mlp_beta = Tensor::zeros({2});
+    noop_block.w_fc = sa_eye;
+    noop_block.w_proj = Tensor::zeros({2, 2});
+
+    Tensor single_block_out = transformer_block(sa_x, noop_block, 1);
+
+    assert(single_block_out.ndim == 3);
+    for (size_t i = 0; i < sa_x.numel(); i++) {
+        assert(single_block_out.data[i] == sa_x.data[i]);
+    }
+
+    std::vector<TransformerBlockWeights> noop_layers(3, noop_block);
+    Tensor stack_out = transformer_stack(sa_x, noop_layers, 1);
+
+    assert(stack_out.ndim == 3);
+    assert(stack_out.shape[0] == 1 && stack_out.shape[1] == 2 && stack_out.shape[2] == 2);
+    for (size_t i = 0; i < sa_x.numel(); i++) {
+        assert(stack_out.data[i] == sa_x.data[i]);
+    }
+
+    // a stack with live weights just needs to come out the right shape
+    TransformerBlockWeights live_block = noop_block;
+    live_block.w_o = sa_eye;
+    live_block.w_proj = sa_eye;
+
+    std::vector<TransformerBlockWeights> live_layers(2, live_block);
+    Tensor live_out = transformer_stack(sa_x, live_layers, 1);
+
+    assert(live_out.ndim == 3);
+    assert(live_out.shape[0] == 1 && live_out.shape[1] == 2 && live_out.shape[2] == 2);
 
     std::cout << "All tensor tests passed" << std::endl;
 
