@@ -14,12 +14,16 @@ Tensor scaled_dot_product_attention(const Tensor& query, const Tensor& key, cons
 // runs causal attention per head, and merges the heads back
 Tensor multi_head_attention(const Tensor& query, const Tensor& key, const Tensor& value, int num_heads);
 
-// full self attention on [batch, seq, hidden]: q/k/v projections,
-// multi head causal attention, output projection
-Tensor self_attention(const Tensor& x, const Tensor& w_q, const Tensor& w_k,
-                      const Tensor& w_v, const Tensor& w_o, int num_heads);
+// full self attention on [batch, seq, hidden]: biased q/k/v projections,
+// multi head causal attention, biased output projection
+Tensor self_attention(const Tensor& x, const Tensor& w_q, const Tensor& b_q,
+                      const Tensor& w_k, const Tensor& b_k,
+                      const Tensor& w_v, const Tensor& b_v,
+                      const Tensor& w_o, const Tensor& b_o, int num_heads);
 
 // pre layernorm attention block, GPT-2 style: x + self_attention(layernorm(x))
 Tensor attention_block(const Tensor& x, const Tensor& gamma, const Tensor& beta,
-                       const Tensor& w_q, const Tensor& w_k, const Tensor& w_v,
-                       const Tensor& w_o, int num_heads);
+                       const Tensor& w_q, const Tensor& b_q,
+                       const Tensor& w_k, const Tensor& b_k,
+                       const Tensor& w_v, const Tensor& b_v,
+                       const Tensor& w_o, const Tensor& b_o, int num_heads);

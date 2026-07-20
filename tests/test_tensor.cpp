@@ -328,11 +328,14 @@ int main() {
         }
     }
 
-    // test self attention with identity projections matches multi head attention exactly
+    // test self attention with identity projections and zero biases matches
+    // multi head attention exactly
     Tensor sa_x = Tensor::from_data({1, 2, 2}, {1, 2, 3, 4});
     Tensor sa_eye = Tensor::from_data({2, 2}, {1, 0, 0, 1});
+    Tensor sa_zero_bias = Tensor::zeros({2});
 
-    Tensor sa_out = self_attention(sa_x, sa_eye, sa_eye, sa_eye, sa_eye, 1);
+    Tensor sa_out = self_attention(sa_x, sa_eye, sa_zero_bias, sa_eye, sa_zero_bias,
+                                   sa_eye, sa_zero_bias, sa_eye, sa_zero_bias, 1);
     Tensor sa_expected = multi_head_attention(sa_x, sa_x, sa_x, 1);
 
     assert(sa_out.ndim == 3);
@@ -345,7 +348,8 @@ int main() {
     // doubling the value projection doubles the output exactly, since the
     // attention weights only depend on q and k
     Tensor sa_eye_doubled = Tensor::from_data({2, 2}, {2, 0, 0, 2});
-    Tensor sa_out_doubled = self_attention(sa_x, sa_eye, sa_eye, sa_eye_doubled, sa_eye, 1);
+    Tensor sa_out_doubled = self_attention(sa_x, sa_eye, sa_zero_bias, sa_eye, sa_zero_bias,
+                                           sa_eye_doubled, sa_zero_bias, sa_eye, sa_zero_bias, 1);
 
     for (size_t i = 0; i < sa_out.numel(); i++) {
         assert(sa_out_doubled.data[i] == 2 * sa_out.data[i]);
@@ -357,7 +361,9 @@ int main() {
     Tensor block_beta = Tensor::zeros({2});
     Tensor block_w_o_zero = Tensor::zeros({2, 2});
 
-    Tensor block_out = attention_block(sa_x, block_gamma, block_beta, sa_eye, sa_eye, sa_eye, block_w_o_zero, 1);
+    Tensor block_out = attention_block(sa_x, block_gamma, block_beta, sa_eye, sa_zero_bias,
+                                       sa_eye, sa_zero_bias, sa_eye, sa_zero_bias,
+                                       block_w_o_zero, sa_zero_bias, 1);
 
     assert(block_out.ndim == 3);
     assert(block_out.shape[0] == 1 && block_out.shape[1] == 2 && block_out.shape[2] == 2);
@@ -366,9 +372,22 @@ int main() {
         assert(block_out.data[i] == sa_x.data[i]);
     }
 
+    // with the output projection zeroed, its bias passes straight through,
+    // so the block becomes x + b_o exactly
+    Tensor bias_shift = Tensor::from_data({2}, {5, 7});
+    Tensor block_out_bias = attention_block(sa_x, block_gamma, block_beta, sa_eye, sa_zero_bias,
+                                            sa_eye, sa_zero_bias, sa_eye, sa_zero_bias,
+                                            block_w_o_zero, bias_shift, 1);
+
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            assert(block_out_bias.at({0, i, j}) == sa_x.at({0, i, j}) + bias_shift.at({j}));
+        }
+    }
+
     // test the mlp block: identity weights reduce it to x + gelu(layernorm(x)),
     // and layernorm maps every row of sa_x to roughly [-1, 1]
-    Tensor mlp_out = mlp_block(sa_x, block_gamma, block_beta, sa_eye, sa_eye);
+    Tensor mlp_out = mlp_block(sa_x, block_gamma, block_beta, sa_eye, sa_zero_bias, sa_eye, sa_zero_bias);
 
     assert(mlp_out.ndim == 3);
     assert(std::abs(mlp_out.at({0, 0, 0}) - 0.8411920f) < 1e-4f);
@@ -377,10 +396,21 @@ int main() {
     assert(std::abs(mlp_out.at({0, 1, 1}) - 4.8411920f) < 1e-4f);
 
     // zero second linear reduces the mlp block to the bare residual
-    Tensor mlp_out_zero = mlp_block(sa_x, block_gamma, block_beta, sa_eye, block_w_o_zero);
+    Tensor mlp_out_zero = mlp_block(sa_x, block_gamma, block_beta, sa_eye, sa_zero_bias,
+                                    block_w_o_zero, sa_zero_bias);
 
     for (size_t i = 0; i < sa_x.numel(); i++) {
         assert(mlp_out_zero.data[i] == sa_x.data[i]);
+    }
+
+    // and its bias passes through the zeroed linear, giving x + b_proj exactly
+    Tensor mlp_out_bias = mlp_block(sa_x, block_gamma, block_beta, sa_eye, sa_zero_bias,
+                                    block_w_o_zero, bias_shift);
+
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            assert(mlp_out_bias.at({0, i, j}) == sa_x.at({0, i, j}) + bias_shift.at({j}));
+        }
     }
 
     // test the full transformer block and stacking: zeroing both output
@@ -389,13 +419,19 @@ int main() {
     noop_block.attn_gamma = Tensor::ones({2});
     noop_block.attn_beta = Tensor::zeros({2});
     noop_block.w_q = sa_eye;
+    noop_block.b_q = sa_zero_bias;
     noop_block.w_k = sa_eye;
+    noop_block.b_k = sa_zero_bias;
     noop_block.w_v = sa_eye;
+    noop_block.b_v = sa_zero_bias;
     noop_block.w_o = Tensor::zeros({2, 2});
+    noop_block.b_o = sa_zero_bias;
     noop_block.mlp_gamma = Tensor::ones({2});
     noop_block.mlp_beta = Tensor::zeros({2});
     noop_block.w_fc = sa_eye;
+    noop_block.b_fc = sa_zero_bias;
     noop_block.w_proj = Tensor::zeros({2, 2});
+    noop_block.b_proj = sa_zero_bias;
 
     Tensor single_block_out = transformer_block(sa_x, noop_block, 1);
 
