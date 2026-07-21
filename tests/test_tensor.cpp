@@ -6,6 +6,7 @@
 #include "tensor.hpp"
 #include "attention.hpp"
 #include "transformer.hpp"
+#include "model.hpp"
 
 int main() {
     // test default tensor
@@ -459,6 +460,34 @@ int main() {
 
     assert(live_out.ndim == 3);
     assert(live_out.shape[0] == 1 && live_out.shape[1] == 2 && live_out.shape[2] == 2);
+
+    // test token plus positional embeddings: every output row must be
+    // exactly wte[token] + wpe[position]
+    Tensor embed_wte = Tensor::from_data({4, 2}, {
+        0, 1,
+        10, 11,
+        20, 21,
+        30, 31
+    });
+    Tensor embed_wpe = Tensor::from_data({3, 2}, {
+        100, 200,
+        300, 400,
+        500, 600
+    });
+    Tensor embed_ids = Tensor::from_data({2, 2}, {
+        2, 0,
+        3, 3
+    });
+
+    Tensor embed_out = embed(embed_wte, embed_wpe, embed_ids);
+
+    assert(embed_out.ndim == 3);
+    assert(embed_out.shape[0] == 2 && embed_out.shape[1] == 2 && embed_out.shape[2] == 2);
+
+    assert(embed_out.at({0, 0, 0}) == 120 && embed_out.at({0, 0, 1}) == 221);
+    assert(embed_out.at({0, 1, 0}) == 300 && embed_out.at({0, 1, 1}) == 401);
+    assert(embed_out.at({1, 0, 0}) == 130 && embed_out.at({1, 0, 1}) == 231);
+    assert(embed_out.at({1, 1, 0}) == 330 && embed_out.at({1, 1, 1}) == 431);
 
     std::cout << "All tensor tests passed" << std::endl;
 
