@@ -80,10 +80,10 @@ void ThreadPool::parallel_for(int total, int max_chunks, const std::function<voi
             int end = start + chunk_size + (c < remainder ? 1 : 0);
             tasks.emplace([&fn, &done_mutex, &done_cv, &pending, start, end] {
                 fn(start, end);
-                {
-                    std::lock_guard<std::mutex> done_lock(done_mutex);
-                    pending--;
-                }
+                // notify while still holding the lock: the caller may destroy
+                // the latch as soon as it can observe pending == 0
+                std::lock_guard<std::mutex> done_lock(done_mutex);
+                pending--;
                 done_cv.notify_one();
             });
             start = end;
