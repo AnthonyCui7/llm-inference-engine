@@ -489,6 +489,36 @@ int main() {
     assert(embed_out.at({1, 0, 0}) == 130 && embed_out.at({1, 0, 1}) == 231);
     assert(embed_out.at({1, 1, 0}) == 330 && embed_out.at({1, 1, 1}) == 431);
 
+    // test the model forward pass: with no-op blocks the logits must be
+    // exactly layernorm(embeddings) times the tied unembedding
+    ModelWeights tiny_model;
+    tiny_model.config = {4, 3, 2, 1, 2};
+    tiny_model.wte = embed_wte;
+    tiny_model.wpe = embed_wpe;
+    tiny_model.blocks = std::vector<TransformerBlockWeights>(2, noop_block);
+    tiny_model.final_gamma = Tensor::ones({2});
+    tiny_model.final_beta = Tensor::zeros({2});
+    tiny_model.lm_head = embed_wte.transpose(0, 1);
+
+    Tensor logits = model_forward(tiny_model, embed_ids);
+
+    assert(logits.ndim == 3);
+    assert(logits.shape[0] == 2 && logits.shape[1] == 2 && logits.shape[2] == 4);
+
+    Tensor logits_expected = embed(embed_wte, embed_wpe, embed_ids)
+        .layernorm(tiny_model.final_gamma, tiny_model.final_beta)
+        .reshape({4, 2}).matmul(tiny_model.lm_head).reshape({2, 2, 4});
+
+    for (size_t i = 0; i < logits.numel(); i++) {
+        assert(logits.data[i] == logits_expected.data[i]);
+    }
+
+    // live blocks just need the right logits shape end to end
+    tiny_model.blocks = std::vector<TransformerBlockWeights>(2, live_block);
+    Tensor logits_live = model_forward(tiny_model, embed_ids);
+
+    assert(logits_live.shape[0] == 2 && logits_live.shape[1] == 2 && logits_live.shape[2] == 4);
+
     std::cout << "All tensor tests passed" << std::endl;
 
     return 0;

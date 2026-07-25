@@ -17,3 +17,18 @@ Tensor embed(const Tensor& wte, const Tensor& wpe, const Tensor& token_ids) {
     // [batch, seq, hidden] + [1, seq, hidden] broadcasts over the batch
     return wte.embedding(token_ids).add(wpe.embedding(positions));
 }
+
+Tensor model_forward(const ModelWeights& model, const Tensor& token_ids) {
+    assert(token_ids.ndim == 2);
+
+    int batch = token_ids.shape[0];
+    int seq = token_ids.shape[1];
+    assert(seq <= model.config.max_seq);
+
+    Tensor x = embed(model.wte, model.wpe, token_ids);
+    x = transformer_stack(x, model.blocks, model.config.num_heads);
+    x = x.layernorm(model.final_gamma, model.final_beta);
+
+    return x.reshape({batch * seq, model.config.hidden}).matmul(model.lm_head)
+        .reshape({batch, seq, model.config.vocab_size});
+}
