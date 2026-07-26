@@ -1,5 +1,7 @@
 #include <utility>
 #include <cassert>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 
@@ -7,6 +9,11 @@
 #include "attention.hpp"
 #include "transformer.hpp"
 #include "model.hpp"
+#include "weights.hpp"
+
+static void write_u32(std::FILE* f, uint32_t value) {
+    std::fwrite(&value, sizeof(value), 1, f);
+}
 
 int main() {
     // test default tensor
@@ -518,6 +525,57 @@ int main() {
     Tensor logits_live = model_forward(tiny_model, embed_ids);
 
     assert(logits_live.shape[0] == 2 && logits_live.shape[1] == 2 && logits_live.shape[2] == 4);
+
+    // test the weight file loader: write a small file in the documented
+    // format by hand and read it back
+    const char* weight_path = "bin/test_weights.bin";
+    std::FILE* wf = std::fopen(weight_path, "wb");
+    assert(wf != nullptr);
+
+    std::fwrite("LLMW", 1, 4, wf);
+    write_u32(wf, 1);  // version
+    write_u32(wf, 2);  // tensor count
+
+    write_u32(wf, 5);
+    std::fwrite("alpha", 1, 5, wf);
+    write_u32(wf, 2);
+    write_u32(wf, 2);
+    write_u32(wf, 3);
+    float alpha_values[6] = {1, 2, 3, 4, 5, 6.5f};
+    std::fwrite(alpha_values, sizeof(float), 6, wf);
+
+    write_u32(wf, 4);
+    std::fwrite("beta", 1, 4, wf);
+    write_u32(wf, 1);
+    write_u32(wf, 4);
+    float beta_values[4] = {-1, 0, 0.25f, 8};
+    std::fwrite(beta_values, sizeof(float), 4, wf);
+
+    std::fclose(wf);
+
+    Fp32FileLoader loader(weight_path);
+
+    assert(loader.has("alpha"));
+    assert(loader.has("beta"));
+    assert(!loader.has("gamma"));
+
+    Tensor alpha = loader.load("alpha");
+    assert(alpha.ndim == 2 && alpha.shape[0] == 2 && alpha.shape[1] == 3);
+    for (int i = 0; i < 6; i++) {
+        assert(alpha.data[i] == alpha_values[i]);
+    }
+
+    Tensor beta = loader.load("beta");
+    assert(beta.ndim == 1 && beta.shape[0] == 4);
+    for (int i = 0; i < 4; i++) {
+        assert(beta.data[i] == beta_values[i]);
+    }
+
+    // load hands out copies, so scribbling on one does not touch the loader
+    alpha.data[0] = 99;
+    assert(loader.load("alpha").data[0] == 1);
+
+    std::remove(weight_path);
 
     std::cout << "All tensor tests passed" << std::endl;
 
