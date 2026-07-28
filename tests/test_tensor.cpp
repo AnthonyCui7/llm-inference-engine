@@ -15,6 +15,16 @@ static void write_u32(std::FILE* f, uint32_t value) {
     std::fwrite(&value, sizeof(value), 1, f);
 }
 
+static void write_tensor(std::FILE* f, const std::string& name, const Tensor& t) {
+    write_u32(f, static_cast<uint32_t>(name.size()));
+    std::fwrite(name.data(), 1, name.size(), f);
+    write_u32(f, static_cast<uint32_t>(t.ndim));
+    for (int d = 0; d < t.ndim; d++) {
+        write_u32(f, static_cast<uint32_t>(t.shape[d]));
+    }
+    std::fwrite(t.data, sizeof(float), t.numel(), f);
+}
+
 int main() {
     // test default tensor
     Tensor default_tensor;
@@ -576,6 +586,65 @@ int main() {
     assert(loader.load("alpha").data[0] == 1);
 
     std::remove(weight_path);
+
+    // test load_model: dump the tiny no-op model to a file under the
+    // dump script's naming scheme and check the loaded forward pass
+    // reproduces the in-memory one exactly
+    const char* model_path = "bin/test_model.bin";
+    std::FILE* mf = std::fopen(model_path, "wb");
+    assert(mf != nullptr);
+
+    std::fwrite("LLMW", 1, 4, mf);
+    write_u32(mf, 1);
+    write_u32(mf, 5 + 2 * 16);
+
+    write_tensor(mf, "config", Tensor::from_data({5}, {4, 3, 2, 1, 2}));
+    write_tensor(mf, "wte", embed_wte);
+    write_tensor(mf, "wpe", embed_wpe);
+
+    for (int i = 0; i < 2; i++) {
+        std::string prefix = "h" + std::to_string(i) + ".";
+        write_tensor(mf, prefix + "attn_gamma", noop_block.attn_gamma);
+        write_tensor(mf, prefix + "attn_beta", noop_block.attn_beta);
+        write_tensor(mf, prefix + "w_q", noop_block.w_q);
+        write_tensor(mf, prefix + "b_q", noop_block.b_q);
+        write_tensor(mf, prefix + "w_k", noop_block.w_k);
+        write_tensor(mf, prefix + "b_k", noop_block.b_k);
+        write_tensor(mf, prefix + "w_v", noop_block.w_v);
+        write_tensor(mf, prefix + "b_v", noop_block.b_v);
+        write_tensor(mf, prefix + "w_o", noop_block.w_o);
+        write_tensor(mf, prefix + "b_o", noop_block.b_o);
+        write_tensor(mf, prefix + "mlp_gamma", noop_block.mlp_gamma);
+        write_tensor(mf, prefix + "mlp_beta", noop_block.mlp_beta);
+        write_tensor(mf, prefix + "w_fc", noop_block.w_fc);
+        write_tensor(mf, prefix + "b_fc", noop_block.b_fc);
+        write_tensor(mf, prefix + "w_proj", noop_block.w_proj);
+        write_tensor(mf, prefix + "b_proj", noop_block.b_proj);
+    }
+
+    write_tensor(mf, "final_gamma", tiny_model.final_gamma);
+    write_tensor(mf, "final_beta", tiny_model.final_beta);
+    std::fclose(mf);
+
+    Fp32FileLoader model_loader(model_path);
+    ModelWeights loaded_model = load_model(model_loader);
+
+    assert(loaded_model.config.vocab_size == 4);
+    assert(loaded_model.config.max_seq == 3);
+    assert(loaded_model.config.hidden == 2);
+    assert(loaded_model.config.num_heads == 1);
+    assert(loaded_model.config.num_layers == 2);
+    assert(loaded_model.lm_head.ndim == 2);
+    assert(loaded_model.lm_head.shape[0] == 2 && loaded_model.lm_head.shape[1] == 4);
+
+    Tensor loaded_logits = model_forward(loaded_model, embed_ids);
+
+    assert(loaded_logits.numel() == logits.numel());
+    for (size_t i = 0; i < logits.numel(); i++) {
+        assert(loaded_logits.data[i] == logits.data[i]);
+    }
+
+    std::remove(model_path);
 
     std::cout << "All tensor tests passed" << std::endl;
 

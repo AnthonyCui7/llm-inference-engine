@@ -4,8 +4,11 @@ positional embeddings, block stack, final layernorm, tied unembedding.
 */
 #pragma once
 
+#include <string>
+
 #include "tensor.hpp"
 #include "transformer.hpp"
+#include "weights.hpp"
 
 // model dimensions, matching the GPT-2 family
 struct ModelConfig {
@@ -35,3 +38,7 @@ Tensor embed(const Tensor& wte, const Tensor& wpe, const Tensor& token_ids);
 // full forward pass over pre tokenized input:
 // [batch, seq] ids -> [batch, seq, vocab] logits
 Tensor model_forward(const ModelWeights& model, const Tensor& token_ids);
+
+// pulls a full model out of a weight file; expects the naming scheme
+// written by scripts/dump_gpt2.py ("config", "wte", "wpe", "h0.w_q", ...)
+ModelWeights load_model(const WeightLoader& loader);
