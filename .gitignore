@@ -24,3 +24,6 @@ venv/
 *.csv
 *.json
 *.prof
+
+# Dumped model weights
+*.bin
