@@ -10,6 +10,7 @@
 #include "transformer.hpp"
 #include "model.hpp"
 #include "weights.hpp"
+#include "generate.hpp"
 
 static void write_u32(std::FILE* f, uint32_t value) {
     std::fwrite(&value, sizeof(value), 1, f);
@@ -645,6 +646,26 @@ int main() {
     }
 
     std::remove(model_path);
+
+    // test greedy generation: keeps the prompt, stays in vocab, and the
+    // first new token matches a manual argmax over the forward pass
+    std::vector<int> gen_prompt = {2};
+    std::vector<int> gen_out = generate(tiny_model, gen_prompt, 2);
+
+    assert(gen_out.size() == 3);
+    assert(gen_out[0] == 2);
+    for (int t : gen_out) {
+        assert(t >= 0 && t < 4);
+    }
+
+    Tensor gen_ids = Tensor::from_data({1, 1}, {2});
+    Tensor gen_logits = model_forward(tiny_model, gen_ids);
+
+    int expected_next = 0;
+    for (int t = 1; t < 4; t++) {
+        if (gen_logits.data[t] > gen_logits.data[expected_next]) expected_next = t;
+    }
+    assert(gen_out[1] == expected_next);
 
     std::cout << "All tensor tests passed" << std::endl;
 
