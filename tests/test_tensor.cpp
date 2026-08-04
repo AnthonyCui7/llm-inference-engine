@@ -347,6 +347,23 @@ int main() {
         }
     }
 
+    // test the query offset path: the last query alone, offset past the
+    // earlier keys, must reproduce the last row of the full output bitwise
+    Tensor attn_q_last = Tensor::from_data({1, 2}, {0, 1});
+    Tensor attn_out_last = scaled_dot_product_attention(attn_q_last, attn_k, attn_v, 1);
+
+    assert(attn_out_last.shape[0] == 1 && attn_out_last.shape[1] == 2);
+    assert(attn_out_last.data[0] == attn_out.at({1, 0}));
+    assert(attn_out_last.data[1] == attn_out.at({1, 1}));
+
+    Tensor mha_q_last = Tensor::from_data({1, 1, 4}, {0, 1, 0, 1});
+    Tensor mha_out_last = multi_head_attention(mha_q_last, mha_k2, mha_v2, 2, 1);
+
+    assert(mha_out_last.shape[1] == 1 && mha_out_last.shape[2] == 4);
+    for (int j = 0; j < 4; j++) {
+        assert(mha_out_last.at({0, 0, j}) == mha_out_two.at({0, 1, j}));
+    }
+
     // test self attention with identity projections and zero biases matches
     // multi head attention exactly
     Tensor sa_x = Tensor::from_data({1, 2, 2}, {1, 2, 3, 4});

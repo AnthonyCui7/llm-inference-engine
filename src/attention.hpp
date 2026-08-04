@@ -7,11 +7,19 @@ Attention ops for the transformer forward pass, built on the Tensor primitives.
 
 // causal scaled dot product attention over [..., seq, head_dim] tensors:
 // softmax(Q K^T / sqrt(head_dim), masked so a query only sees keys at or
-// before its own position) V
+// before its own position) V. q_offset is the absolute position of the
+// first query row, for queries that continue a longer key/value history
+// (kv cache decoding); the plain overload is full self attention where
+// queries and keys line up
+Tensor scaled_dot_product_attention(const Tensor& query, const Tensor& key, const Tensor& value,
+                                    int q_offset);
 Tensor scaled_dot_product_attention(const Tensor& query, const Tensor& key, const Tensor& value);
 
 // splits the hidden dim of [batch, seq, hidden] inputs into num_heads,
-// runs causal attention per head, and merges the heads back
+// runs causal attention per head, and merges the heads back; same
+// q_offset story as scaled_dot_product_attention
+Tensor multi_head_attention(const Tensor& query, const Tensor& key, const Tensor& value,
+                            int num_heads, int q_offset);
 Tensor multi_head_attention(const Tensor& query, const Tensor& key, const Tensor& value, int num_heads);
 
 // full self attention on [batch, seq, hidden]: biased q/k/v projections,
