@@ -7,6 +7,7 @@ and stacking into the full model.
 #include <vector>
 
 #include "tensor.hpp"
+#include "kv_cache.hpp"
 
 // weights for one transformer block
 struct TransformerBlockWeights {
@@ -39,3 +40,10 @@ Tensor transformer_block(const Tensor& x, const TransformerBlockWeights& weights
 
 // runs x through a stack of blocks in order
 Tensor transformer_stack(const Tensor& x, const std::vector<TransformerBlockWeights>& layers, int num_heads);
+
+// cached variants for decoding: x holds only the new positions, each
+// block reads and appends its own layer of the kv cache
+Tensor transformer_block_cached(const Tensor& x, const TransformerBlockWeights& weights,
+                                int num_heads, KVCache& cache, int layer);
+Tensor transformer_stack_cached(const Tensor& x, const std::vector<TransformerBlockWeights>& layers,
+                                int num_heads, KVCache& cache);

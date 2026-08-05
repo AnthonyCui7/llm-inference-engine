@@ -109,6 +109,37 @@ Tensor self_attention(const Tensor& x, const Tensor& w_q, const Tensor& b_q,
         .add(b_o.reshape({1, hidden})).reshape({batch, seq, hidden});
 }
 
+Tensor self_attention_cached(const Tensor& x, const Tensor& w_q, const Tensor& b_q,
+                             const Tensor& w_k, const Tensor& b_k,
+                             const Tensor& w_v, const Tensor& b_v,
+                             const Tensor& w_o, const Tensor& b_o, int num_heads,
+                             KVCache& cache, int layer) {
+    assert(x.ndim == 3);
+    assert(x.shape[0] == 1);  // the cache holds a single sequence
+
+    int seq = x.shape[1];
+    int hidden = x.shape[2];
+    assert(hidden == cache.hidden);
+
+    Tensor flat = x.reshape({seq, hidden});
+    Tensor q = flat.matmul(w_q).add(b_q.reshape({1, hidden}));
+    Tensor k_new = flat.matmul(w_k).add(b_k.reshape({1, hidden}));
+    Tensor v_new = flat.matmul(w_v).add(b_v.reshape({1, hidden}));
+
+    cache.append(layer, k_new, v_new);
+
+    // attend over everything cached so far, new rows included
+    int total = cache.layers[layer].cursor;
+    Tensor k_all = cache.filled_k(layer).reshape({1, total, hidden});
+    Tensor v_all = cache.filled_v(layer).reshape({1, total, hidden});
+
+    Tensor heads_out = multi_head_attention(q.reshape({1, seq, hidden}), k_all, v_all,
+                                            num_heads, total - seq);
+
+    return heads_out.reshape({seq, hidden}).matmul(w_o)
+        .add(b_o.reshape({1, hidden})).reshape({1, seq, hidden});
+}
+
 Tensor attention_block(const Tensor& x, const Tensor& gamma, const Tensor& beta,
                        const Tensor& w_q, const Tensor& b_q,
                        const Tensor& w_k, const Tensor& b_k,
@@ -119,6 +150,21 @@ Tensor attention_block(const Tensor& x, const Tensor& gamma, const Tensor& beta,
     // pre layernorm: normalize the input, attend, add back the unnormalized residual
     Tensor normed = x.layernorm(gamma, beta);
     Tensor attn = self_attention(normed, w_q, b_q, w_k, b_k, w_v, b_v, w_o, b_o, num_heads);
+
+    return x.add(attn);
+}
+
+Tensor attention_block_cached(const Tensor& x, const Tensor& gamma, const Tensor& beta,
+                              const Tensor& w_q, const Tensor& b_q,
+                              const Tensor& w_k, const Tensor& b_k,
+                              const Tensor& w_v, const Tensor& b_v,
+                              const Tensor& w_o, const Tensor& b_o, int num_heads,
+                              KVCache& cache, int layer) {
+    assert(x.ndim == 3);
+
+    Tensor normed = x.layernorm(gamma, beta);
+    Tensor attn = self_attention_cached(normed, w_q, b_q, w_k, b_k, w_v, b_v, w_o, b_o,
+                                        num_heads, cache, layer);
 
     return x.add(attn);
 }

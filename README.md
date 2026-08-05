@@ -39,3 +39,7 @@ make validate
   behind the same interface.
 - CPU only for now; a GPU backend would be a separate compute path rather
   than a change to the tensor layout.
+- The kv cache (`src/kv_cache.hpp`) is the one place that breaks the
+  exact-size-per-construction tensor story: per layer k/v buffers are
+  preallocated at max_seq capacity and a cursor tracks how much is
+  filled, so decoding appends rows in place instead of reallocating.

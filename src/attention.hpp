@@ -4,6 +4,7 @@ Attention ops for the transformer forward pass, built on the Tensor primitives.
 #pragma once
 
 #include "tensor.hpp"
+#include "kv_cache.hpp"
 
 // causal scaled dot product attention over [..., seq, head_dim] tensors:
 // softmax(Q K^T / sqrt(head_dim), masked so a query only sees keys at or
@@ -29,9 +30,26 @@ Tensor self_attention(const Tensor& x, const Tensor& w_q, const Tensor& b_q,
                       const Tensor& w_v, const Tensor& b_v,
                       const Tensor& w_o, const Tensor& b_o, int num_heads);
 
+// self attention over the kv cache: x holds only the new positions of a
+// single sequence, its keys/values are appended to the layer's cache, and
+// the queries attend over the whole cached history
+Tensor self_attention_cached(const Tensor& x, const Tensor& w_q, const Tensor& b_q,
+                             const Tensor& w_k, const Tensor& b_k,
+                             const Tensor& w_v, const Tensor& b_v,
+                             const Tensor& w_o, const Tensor& b_o, int num_heads,
+                             KVCache& cache, int layer);
+
 // pre layernorm attention block, GPT-2 style: x + self_attention(layernorm(x))
 Tensor attention_block(const Tensor& x, const Tensor& gamma, const Tensor& beta,
                        const Tensor& w_q, const Tensor& b_q,
                        const Tensor& w_k, const Tensor& b_k,
                        const Tensor& w_v, const Tensor& b_v,
                        const Tensor& w_o, const Tensor& b_o, int num_heads);
+
+// same block over the cached attention path
+Tensor attention_block_cached(const Tensor& x, const Tensor& gamma, const Tensor& beta,
+                              const Tensor& w_q, const Tensor& b_q,
+                              const Tensor& w_k, const Tensor& b_k,
+                              const Tensor& w_v, const Tensor& b_v,
+                              const Tensor& w_o, const Tensor& b_o, int num_heads,
+                              KVCache& cache, int layer);

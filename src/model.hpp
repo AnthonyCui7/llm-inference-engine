@@ -32,12 +32,17 @@ struct ModelWeights {
 };
 
 // learned GPT-2 style embeddings: wte[token] + wpe[position] for every
-// position in token_ids, [batch, seq] -> [batch, seq, hidden]
-Tensor embed(const Tensor& wte, const Tensor& wpe, const Tensor& token_ids);
+// position in token_ids, [batch, seq] -> [batch, seq, hidden]; pos_offset
+// shifts the positions when token_ids continues an earlier sequence
+Tensor embed(const Tensor& wte, const Tensor& wpe, const Tensor& token_ids, int pos_offset = 0);
 
 // full forward pass over pre tokenized input:
 // [batch, seq] ids -> [batch, seq, vocab] logits
 Tensor model_forward(const ModelWeights& model, const Tensor& token_ids);
+
+// forward pass over just the new tokens of a single sequence, attending
+// against (and extending) the kv cache; [1, seq] ids -> [1, seq, vocab]
+Tensor model_forward_cached(const ModelWeights& model, const Tensor& token_ids, KVCache& cache);
 
 // pulls a full model out of a weight file; expects the naming scheme
 // written by scripts/dump_gpt2.py ("config", "wte", "wpe", "h0.w_q", ...)

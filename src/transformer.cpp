@@ -45,3 +45,27 @@ Tensor transformer_stack(const Tensor& x, const std::vector<TransformerBlockWeig
 
     return out;
 }
+
+Tensor transformer_block_cached(const Tensor& x, const TransformerBlockWeights& weights,
+                                int num_heads, KVCache& cache, int layer) {
+    Tensor attn_out = attention_block_cached(x, weights.attn_gamma, weights.attn_beta,
+                                             weights.w_q, weights.b_q, weights.w_k, weights.b_k,
+                                             weights.w_v, weights.b_v, weights.w_o, weights.b_o,
+                                             num_heads, cache, layer);
+
+    return mlp_block(attn_out, weights.mlp_gamma, weights.mlp_beta,
+                     weights.w_fc, weights.b_fc, weights.w_proj, weights.b_proj);
+}
+
+Tensor transformer_stack_cached(const Tensor& x, const std::vector<TransformerBlockWeights>& layers,
+                                int num_heads, KVCache& cache) {
+    assert(static_cast<int>(layers.size()) == static_cast<int>(cache.layers.size()));
+
+    Tensor out = x;
+
+    for (size_t i = 0; i < layers.size(); i++) {
+        out = transformer_block_cached(out, layers[i], num_heads, cache, static_cast<int>(i));
+    }
+
+    return out;
+}

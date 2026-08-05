@@ -1,17 +1,18 @@
 #include "model.hpp"
 
-Tensor embed(const Tensor& wte, const Tensor& wpe, const Tensor& token_ids) {
+Tensor embed(const Tensor& wte, const Tensor& wpe, const Tensor& token_ids, int pos_offset) {
     assert(wte.ndim == 2 && wpe.ndim == 2);
     assert(wte.shape[1] == wpe.shape[1]);
     assert(token_ids.ndim == 2);
+    assert(pos_offset >= 0);
 
     int seq = token_ids.shape[1];
-    assert(seq <= wpe.shape[0]);
+    assert(pos_offset + seq <= wpe.shape[0]);
 
-    // positions are just 0..seq-1, looked up like token ids
+    // positions continue from pos_offset, looked up like token ids
     Tensor positions({1, seq});
     for (int i = 0; i < seq; i++) {
-        positions.data[i] = static_cast<float>(i);
+        positions.data[i] = static_cast<float>(pos_offset + i);
     }
 
     // [batch, seq, hidden] + [1, seq, hidden] broadcasts over the batch
@@ -31,6 +32,22 @@ Tensor model_forward(const ModelWeights& model, const Tensor& token_ids) {
 
     return x.reshape({batch * seq, model.config.hidden}).matmul(model.lm_head)
         .reshape({batch, seq, model.config.vocab_size});
+}
+
+Tensor model_forward_cached(const ModelWeights& model, const Tensor& token_ids, KVCache& cache) {
+    assert(token_ids.ndim == 2);
+    assert(token_ids.shape[0] == 1);
+
+    int seq = token_ids.shape[1];
+    int offset = cache.seq_len();
+    assert(offset + seq <= model.config.max_seq);
+
+    Tensor x = embed(model.wte, model.wpe, token_ids, offset);
+    x = transformer_stack_cached(x, model.blocks, model.config.num_heads, cache);
+    x = x.layernorm(model.final_gamma, model.final_beta);
+
+    return x.reshape({seq, model.config.hidden}).matmul(model.lm_head)
+        .reshape({1, seq, model.config.vocab_size});
 }
 
 ModelWeights load_model(const WeightLoader& loader) {

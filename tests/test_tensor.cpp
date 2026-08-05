@@ -684,6 +684,32 @@ int main() {
     }
     assert(gen_out[1] == expected_next);
 
+    // test the kv cache: prefill two tokens then decode a third, and every
+    // logit row must match the uncached forward pass over all three bitwise
+    Tensor cached_full_ids = Tensor::from_data({1, 3}, {2, 0, 3});
+    Tensor cached_full_logits = model_forward(tiny_model, cached_full_ids);
+
+    KVCache cache(2, 3, 2);
+    assert(cache.seq_len() == 0);
+
+    Tensor prefill_ids = Tensor::from_data({1, 2}, {2, 0});
+    Tensor prefill_logits = model_forward_cached(tiny_model, prefill_ids, cache);
+
+    assert(cache.seq_len() == 2);
+    assert(prefill_logits.shape[1] == 2 && prefill_logits.shape[2] == 4);
+    for (int i = 0; i < 8; i++) {
+        assert(prefill_logits.data[i] == cached_full_logits.data[i]);
+    }
+
+    Tensor decode_ids = Tensor::from_data({1, 1}, {3});
+    Tensor decode_logits = model_forward_cached(tiny_model, decode_ids, cache);
+
+    assert(cache.seq_len() == 3);
+    assert(decode_logits.shape[1] == 1 && decode_logits.shape[2] == 4);
+    for (int i = 0; i < 4; i++) {
+        assert(decode_logits.data[i] == cached_full_logits.data[8 + i]);
+    }
+
     std::cout << "All tensor tests passed" << std::endl;
 
     return 0;
