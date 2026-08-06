@@ -684,6 +684,17 @@ int main() {
     }
     assert(gen_out[1] == expected_next);
 
+    // the second new token must match a full uncached forward over the
+    // first two, so cached generation agrees with recomputing from scratch
+    Tensor gen_ids2 = Tensor::from_data({1, 2}, {2, static_cast<float>(gen_out[1])});
+    Tensor gen_logits2 = model_forward(tiny_model, gen_ids2);
+
+    int expected_next2 = 0;
+    for (int t = 1; t < 4; t++) {
+        if (gen_logits2.data[4 + t] > gen_logits2.data[4 + expected_next2]) expected_next2 = t;
+    }
+    assert(gen_out[2] == expected_next2);
+
     // test the kv cache: prefill two tokens then decode a third, and every
     // logit row must match the uncached forward pass over all three bitwise
     Tensor cached_full_ids = Tensor::from_data({1, 3}, {2, 0, 3});

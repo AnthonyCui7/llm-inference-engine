@@ -22,14 +22,27 @@ std::vector<int> generate(const ModelWeights& model, const std::vector<int>& pro
     assert(static_cast<int>(prompt.size()) + max_new_tokens <= model.config.max_seq);
 
     std::vector<int> tokens = prompt;
+    if (max_new_tokens == 0) return tokens;
+
+    // prefill the whole prompt in one pass, then each new token only runs
+    // its single query against the cached history
+    KVCache cache(model.config.num_layers, model.config.max_seq, model.config.hidden);
+
+    Tensor prompt_ids({1, static_cast<int>(prompt.size())});
+    for (size_t i = 0; i < prompt.size(); i++) {
+        prompt_ids.data[i] = static_cast<float>(prompt[i]);
+    }
+
+    Tensor logits = model_forward_cached(model, prompt_ids, cache);
 
     for (int step = 0; step < max_new_tokens; step++) {
-        Tensor ids({1, static_cast<int>(tokens.size())});
-        for (size_t i = 0; i < tokens.size(); i++) {
-            ids.data[i] = static_cast<float>(tokens[i]);
-        }
+        int next = next_token(logits);
+        tokens.push_back(next);
+        if (step + 1 == max_new_tokens) break;
 
-        tokens.push_back(next_token(model_forward(model, ids)));
+        Tensor next_ids({1, 1});
+        next_ids.data[0] = static_cast<float>(next);
+        logits = model_forward_cached(model, next_ids, cache);
     }
 
     return tokens;
