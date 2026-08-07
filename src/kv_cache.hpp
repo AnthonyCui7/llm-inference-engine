@@ -31,6 +31,11 @@ struct KVCache {
     Tensor filled_k(int layer) const;
     Tensor filled_v(int layer) const;
 
+    // rolls every layer back to the first new_len positions, for dropping
+    // rejected draft tokens; only the cursors move, later rows just get
+    // overwritten by the next append
+    void truncate(int new_len);
+
     // positions filled so far
     int seq_len() const;
 

@@ -54,6 +54,15 @@ Tensor KVCache::filled_v(int layer) const {
     return out;
 }
 
+void KVCache::truncate(int new_len) {
+    assert(new_len >= 0);
+
+    for (KVLayer& l : layers) {
+        assert(new_len <= l.cursor);
+        l.cursor = new_len;
+    }
+}
+
 int KVCache::seq_len() const {
     for (const KVLayer& l : layers) {
         assert(l.cursor == layers.front().cursor);

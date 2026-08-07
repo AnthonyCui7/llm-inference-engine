@@ -721,6 +721,23 @@ int main() {
         assert(decode_logits.data[i] == cached_full_logits.data[8 + i]);
     }
 
+    // test rollback: truncate the last token away and decode a different
+    // one, which must match that continuation's own full forward pass
+    cache.truncate(2);
+    assert(cache.seq_len() == 2);
+
+    Tensor redo_ids = Tensor::from_data({1, 1}, {1});
+    Tensor redo_logits = model_forward_cached(tiny_model, redo_ids, cache);
+
+    assert(cache.seq_len() == 3);
+
+    Tensor redo_full_ids = Tensor::from_data({1, 3}, {2, 0, 1});
+    Tensor redo_full_logits = model_forward(tiny_model, redo_full_ids);
+
+    for (int i = 0; i < 4; i++) {
+        assert(redo_logits.data[i] == redo_full_logits.data[8 + i]);
+    }
+
     std::cout << "All tensor tests passed" << std::endl;
 
     return 0;
