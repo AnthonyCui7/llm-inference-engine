@@ -738,6 +738,46 @@ int main() {
         assert(redo_logits.data[i] == redo_full_logits.data[8 + i]);
     }
 
+    // test sampling: probs match the softmax hand values at temperature 1,
+    // low temperature sharpens, fixed seeds reproduce, frequencies converge
+    float sample_logits[3] = {1.0f, 2.0f, 3.0f};
+    std::vector<float> sample_probs = logits_to_probs(sample_logits, 3, 1.0f);
+
+    assert(std::abs(sample_probs[0] - 0.09003057f) < 1e-6f);
+    assert(std::abs(sample_probs[1] - 0.24472847f) < 1e-6f);
+    assert(std::abs(sample_probs[2] - 0.66524096f) < 1e-6f);
+
+    std::vector<float> sharp_probs = logits_to_probs(sample_logits, 3, 0.25f);
+    assert(sharp_probs[2] > sample_probs[2]);
+
+    std::mt19937 rng_a(42);
+    std::mt19937 rng_b(42);
+    for (int i = 0; i < 20; i++) {
+        assert(sample_token(sample_logits, 3, 1.0f, rng_a)
+               == sample_token(sample_logits, 3, 1.0f, rng_b));
+    }
+
+    std::mt19937 rng_freq(7);
+    int sample_counts[3] = {0, 0, 0};
+    for (int i = 0; i < 20000; i++) {
+        sample_counts[sample_token(sample_logits, 3, 1.0f, rng_freq)]++;
+    }
+    for (int t = 0; t < 3; t++) {
+        assert(std::abs(sample_counts[t] / 20000.0f - sample_probs[t]) < 0.01f);
+    }
+
+    // sampled generation reproduces under the same seed and stays in vocab
+    std::mt19937 rng_c(1);
+    std::mt19937 rng_d(1);
+    std::vector<int> sampled_a = generate_sampled(tiny_model, gen_prompt, 2, 1.0f, rng_c);
+    std::vector<int> sampled_b = generate_sampled(tiny_model, gen_prompt, 2, 1.0f, rng_d);
+
+    assert(sampled_a.size() == 3 && sampled_a[0] == 2);
+    assert(sampled_a == sampled_b);
+    for (int t : sampled_a) {
+        assert(t >= 0 && t < 4);
+    }
+
     std::cout << "All tensor tests passed" << std::endl;
 
     return 0;
