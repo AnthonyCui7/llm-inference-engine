@@ -11,9 +11,19 @@
 #include "model.hpp"
 #include "weights.hpp"
 #include "generate.hpp"
+#include "speculative.hpp"
 
 static void write_u32(std::FILE* f, uint32_t value) {
     std::fwrite(&value, sizeof(value), 1, f);
+}
+
+// deterministic varied values in about [-0.45, 0.45]
+static Tensor pseudo_tensor(std::initializer_list<int> shape, int salt) {
+    Tensor t(shape);
+    for (size_t i = 0; i < t.numel(); i++) {
+        t.data[i] = (static_cast<int>((i * 13 + salt * 7) % 19) - 9) * 0.05f;
+    }
+    return t;
 }
 
 static void write_tensor(std::FILE* f, const std::string& name, const Tensor& t) {
@@ -775,6 +785,95 @@ int main() {
     assert(sampled_a.size() == 3 && sampled_a[0] == 2);
     assert(sampled_a == sampled_b);
     for (int t : sampled_a) {
+        assert(t >= 0 && t < 4);
+    }
+
+    // test speculative decoding with a draft whose distribution differs
+    // from the target's: rejection sampling must still leave the output
+    // distributed exactly like the target decoding alone. hidden 4 with
+    // varied weights, since tiny hidden 2 models collapse to nearly
+    // uniform logits after the final layernorm
+    TransformerBlockWeights spec_block;
+    spec_block.attn_gamma = Tensor::ones({4});
+    spec_block.attn_beta = Tensor::zeros({4});
+    spec_block.w_q = pseudo_tensor({4, 4}, 3);
+    spec_block.b_q = pseudo_tensor({4}, 4);
+    spec_block.w_k = pseudo_tensor({4, 4}, 5);
+    spec_block.b_k = pseudo_tensor({4}, 6);
+    spec_block.w_v = pseudo_tensor({4, 4}, 7);
+    spec_block.b_v = pseudo_tensor({4}, 8);
+    spec_block.w_o = pseudo_tensor({4, 4}, 9);
+    spec_block.b_o = pseudo_tensor({4}, 10);
+    spec_block.mlp_gamma = Tensor::ones({4});
+    spec_block.mlp_beta = Tensor::zeros({4});
+    spec_block.w_fc = pseudo_tensor({4, 8}, 11);
+    spec_block.b_fc = pseudo_tensor({8}, 12);
+    spec_block.w_proj = pseudo_tensor({8, 4}, 13);
+    spec_block.b_proj = pseudo_tensor({4}, 14);
+
+    TransformerBlockWeights spec_draft_block = spec_block;
+    spec_draft_block.w_q = pseudo_tensor({4, 4}, 21);
+    spec_draft_block.w_v = pseudo_tensor({4, 4}, 23);
+    spec_draft_block.w_o = pseudo_tensor({4, 4}, 25);
+    spec_draft_block.w_fc = pseudo_tensor({4, 8}, 27);
+    spec_draft_block.w_proj = pseudo_tensor({8, 4}, 29);
+
+    ModelWeights spec_target;
+    spec_target.config = {4, 16, 4, 2, 2};
+    spec_target.wte = pseudo_tensor({4, 4}, 1);
+    spec_target.wpe = pseudo_tensor({16, 4}, 2);
+    spec_target.blocks = std::vector<TransformerBlockWeights>(2, spec_block);
+    spec_target.final_gamma = Tensor::ones({4});
+    spec_target.final_beta = Tensor::zeros({4});
+    spec_target.lm_head = spec_target.wte.transpose(0, 1);
+
+    ModelWeights spec_draft = spec_target;
+    spec_draft.config.num_layers = 1;
+    spec_draft.blocks = std::vector<TransformerBlockWeights>(1, spec_draft_block);
+
+    // exact next token distributions; the two models must actually
+    // disagree, or this test has no power
+    Tensor spec_prompt_ids = Tensor::from_data({1, 1}, {2});
+    Tensor spec_target_logits = model_forward(spec_target, spec_prompt_ids);
+    std::vector<float> spec_expected = logits_to_probs(spec_target_logits.data, 4, 1.0f);
+
+    Tensor spec_draft_logits = model_forward(spec_draft, spec_prompt_ids);
+    std::vector<float> spec_draft_probs = logits_to_probs(spec_draft_logits.data, 4, 1.0f);
+
+    float spec_gap = 0.0f;
+    for (int t = 0; t < 4; t++) {
+        spec_gap = std::max(spec_gap, std::abs(spec_expected[t] - spec_draft_probs[t]));
+    }
+    assert(spec_gap > 0.05f);
+
+    std::vector<int> spec_prompt = {2};
+    std::mt19937 spec_rng(123);
+    const int spec_trials = 10000;
+    int spec_counts[4] = {0, 0, 0, 0};
+
+    for (int i = 0; i < spec_trials; i++) {
+        std::vector<int> out = generate_speculative(spec_target, spec_draft, spec_prompt,
+                                                    1, 2, 1.0f, spec_rng);
+        assert(out.size() == 2 && out[0] == 2);
+        assert(out[1] >= 0 && out[1] < 4);
+        spec_counts[out[1]]++;
+    }
+
+    for (int t = 0; t < 4; t++) {
+        assert(std::abs(spec_counts[t] / static_cast<float>(spec_trials) - spec_expected[t]) < 0.02f);
+    }
+
+    // longer speculative runs reproduce under a fixed seed
+    std::mt19937 spec_rng_a(9);
+    std::mt19937 spec_rng_b(9);
+    std::vector<int> spec_a = generate_speculative(spec_target, spec_draft, spec_prompt,
+                                                   6, 3, 1.0f, spec_rng_a);
+    std::vector<int> spec_b = generate_speculative(spec_target, spec_draft, spec_prompt,
+                                                   6, 3, 1.0f, spec_rng_b);
+
+    assert(spec_a.size() == 7);
+    assert(spec_a == spec_b);
+    for (int t : spec_a) {
         assert(t >= 0 && t < 4);
     }
 
