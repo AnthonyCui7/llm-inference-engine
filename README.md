@@ -18,6 +18,14 @@ make generate
 The driver works on raw token ids; `scripts/tokenizer.py encode`/`decode`
 converts to and from text.
 
+With a second weight file the driver decodes speculatively, sampling at
+temperature 1 with a fixed seed:
+
+```
+python3 scripts/dump_gpt2.py distilgpt2 distilgpt2.bin
+./bin/generate gpt2.bin --draft distilgpt2.bin 10 464 3139 286 4881 318
+```
+
 Check the forward pass against huggingface logits on a fixed prompt:
 
 ```
@@ -43,3 +51,10 @@ make validate
   exact-size-per-construction tensor story: per layer k/v buffers are
   preallocated at max_seq capacity and a cursor tracks how much is
   filled, so decoding appends rows in place instead of reallocating.
+- Speculative decoding is distribution exact (rejection sampling against
+  the target's probabilities) but does not pay off with gpt2 small as
+  target and distilgpt2 as draft: decode is memory bound and the draft
+  streams about 0.6x the target's weights per token, since the 154MB
+  unembedding is the same for both. Even perfect acceptance would cap
+  the speedup near 1.1x, so this pairing stays a correctness
+  demonstration; winning needs a much smaller draft.
