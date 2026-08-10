@@ -21,7 +21,9 @@ def main():
     prompt = sys.argv[3] if len(sys.argv) > 3 else "The quick brown fox jumps over the lazy dog"
 
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-    model = GPT2LMHeadModel.from_pretrained(model_name)
+    # float64: torch's fp32 cpu blas on apple silicon returns NaNs for the
+    # larger gpt2 head projections even with finite inputs
+    model = GPT2LMHeadModel.from_pretrained(model_name).double()
     model.eval()
 
     ids = tokenizer.encode(prompt)
