@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
     std::vector<int> tokens;
     if (speculative) {
         std::mt19937 rng(42);
-        tokens = generate_speculative(model, draft, prompt, max_new_tokens, 4, 1.0f, rng);
+        tokens = generate_speculative(model, draft, prompt, max_new_tokens, 3, 1.0f, rng);
     } else {
         tokens = generate(model, prompt, max_new_tokens);
     }

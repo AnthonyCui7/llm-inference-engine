@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     int new_tokens = argc > 2 ? std::atoi(argv[2]) : 32;
     int iterations = argc > 3 ? std::atoi(argv[3]) : 3;
     const char* draft_path = argc > 4 ? argv[4] : nullptr;
-    int draft_len = argc > 5 ? std::atoi(argv[5]) : 4;
+    int draft_len = argc > 5 ? std::atoi(argv[5]) : 3;
     float temperature = argc > 6 ? static_cast<float>(std::atof(argv[6])) : 1.0f;
     int warmup_iters = 1;
 
