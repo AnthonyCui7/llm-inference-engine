@@ -52,9 +52,11 @@ make validate
   preallocated at max_seq capacity and a cursor tracks how much is
   filled, so decoding appends rows in place instead of reallocating.
 - Speculative decoding is distribution exact (rejection sampling against
-  the target's probabilities) but does not pay off with gpt2 small as
-  target and distilgpt2 as draft: decode is memory bound and the draft
-  streams about 0.6x the target's weights per token, since the 154MB
-  unembedding is the same for both. Even perfect acceptance would cap
-  the speedup near 1.1x, so this pairing stays a correctness
-  demonstration; winning needs a much smaller draft.
+  the target's probabilities). Decode is memory bound, so it only pays
+  off when the draft streams far fewer bytes per token than the target:
+  gpt2 small with a distilgpt2 draft loses outright (the draft costs
+  0.6x the target, capping the speedup near 1.1x even at perfect
+  acceptance), while gpt2-large with the same draft and 3 proposals per
+  round runs about 1.4x faster (129 -> 92 ms/token at temperature 1).
+  The dump script takes any gpt2 family name, so the pairing is just a
+  choice of weight files.
