@@ -5,6 +5,45 @@ dependencies beyond the STL. A custom `Tensor` struct with manual strides,
 a persistent thread pool and SIMD matmul kernels underneath, and a GPT-2
 forward pass on top that runs the real pretrained weights.
 
+## Features
+
+- Up to 8 dimensional tensors with broadcasting, batched matmul, gelu,
+  layernorm, softmax, and embedding lookups
+- Threaded, SIMD (NEON/AVX2), cache blocked matmul, bitwise identical to
+  the naive reference kernel
+- Full GPT-2 forward pass: multi head causal attention, pre layernorm
+  blocks, learned positional embeddings, tied unembedding
+- Binary weight format plus a loader that runs any GPT-2 family
+  checkpoint (gpt2, distilgpt2, gpt2-medium, gpt2-large)
+- KV cached decoding with rollback, greedy and temperature sampling, and
+  distribution exact speculative decoding
+- Forward pass validated against huggingface logits
+
+## Architecture
+
+```
+src/tensor.hpp       tensor struct, strides, kernels
+src/thread_pool.hpp  persistent worker pool behind matmul
+src/attention.hpp    causal attention, with and without the kv cache
+src/transformer.hpp  block weights, mlp block, block stack
+src/model.hpp        embeddings, forward pass, weight loading
+src/kv_cache.hpp     preallocated per layer k/v buffers with a cursor
+src/sample.hpp       temperature sampling
+src/speculative.hpp  draft/verify decoding with rejection sampling
+src/weights.hpp      weight file format and loader interface
+```
+
+Design decisions are written up in `docs/design.md`.
+
+## Performance
+
+- Matmul: about 7x over the naive kernel (roughly 30 to 200-215 gflop/s
+  on an M3 Pro for N >= 512), from threading, an SIMD row kernel, and
+  k blocking; full history in `benchmarks/matmul.md`
+- Generation: the kv cache takes gpt2 small from 75.8 to 16.5 ms/token,
+  and speculative decoding runs gpt2-large about 1.4x faster with a
+  distilgpt2 draft
+
 ## Usage
 
 Dump GPT-2 small into the engine's weight format, then generate:
@@ -33,30 +72,6 @@ python3 scripts/reference_logits.py
 make validate
 ```
 
-`make run-test` runs the unit tests, `make run-bench` the matmul benchmark
-(numbers in `benchmarks/matmul.md`).
-
-## Notes
-
-- Positional embeddings are GPT-2's learned kind, so they are just one
-  more embedding lookup added to the token embeddings.
-- Tokenization stays in python; a C++ BPE tokenizer was not worth it for
-  getting a real model running.
-- Weights are fp32 and load through the `WeightLoader` interface in
-  `src/weights.hpp`. Quantized formats would be added as another loader
-  behind the same interface.
-- CPU only for now; a GPU backend would be a separate compute path rather
-  than a change to the tensor layout.
-- The kv cache (`src/kv_cache.hpp`) is the one place that breaks the
-  exact-size-per-construction tensor story: per layer k/v buffers are
-  preallocated at max_seq capacity and a cursor tracks how much is
-  filled, so decoding appends rows in place instead of reallocating.
-- Speculative decoding is distribution exact (rejection sampling against
-  the target's probabilities). Decode is memory bound, so it only pays
-  off when the draft streams far fewer bytes per token than the target:
-  gpt2 small with a distilgpt2 draft loses outright (the draft costs
-  0.6x the target, capping the speedup near 1.1x even at perfect
-  acceptance), while gpt2-large with the same draft and 3 proposals per
-  round runs about 1.4x faster (129 -> 92 ms/token at temperature 1).
-  The dump script takes any gpt2 family name, so the pairing is just a
-  choice of weight files.
+`make run-test` runs the unit tests, `make run-bench` the matmul
+benchmark, and `make run-bench-generate` the end to end generation
+benchmark.
