@@ -27,7 +27,19 @@ N = 2048: 4 timed iterations, 1 warmup iteration
 N = 4096: 3 timed iterations, 1 warmup iteration
 ```
 
-## Baseline contiguous 2D matmul
+## Naive contiguous 2D matmul, ijk loop order
+
+```text
+kernel = naive, N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.165408, gflop/s = 3.16966, checksum = 137.625, warmup_checksum = 34.4064, max_diff_vs_naive = 0
+kernel = naive, N = 128, iters = 256, warmup_iters = 64, avg_ms = 1.18985, gflop/s = 3.52507, checksum = 152.013, warmup_checksum = 38.0032, max_diff_vs_naive = 0
+kernel = naive, N = 256, iters = 64, warmup_iters = 16, avg_ms = 11.8869, gflop/s = 2.8228, checksum = 77.376, warmup_checksum = 19.344, max_diff_vs_naive = 0
+kernel = naive, N = 512, iters = 16, warmup_iters = 4, avg_ms = 111.663, gflop/s = 2.40397, checksum = 39.0672, warmup_checksum = 9.7668, max_diff_vs_naive = 0
+kernel = naive, N = 1024, iters = 8, warmup_iters = 2, avg_ms = 1001.95, gflop/s = 2.14329, checksum = 39.296, warmup_checksum = 9.82399, max_diff_vs_naive = 0
+kernel = naive, N = 2048, iters = 4, warmup_iters = 1, avg_ms = 8722.37, gflop/s = 1.96963, checksum = 39.2923, warmup_checksum = 9.82308
+kernel = naive, N = 4096, iters = 3, warmup_iters = 1, avg_ms = 214595, gflop/s = 0.640457, checksum = 58.9486, warmup_checksum = 19.6495
+```
+
+## Baseline contiguous 2D matmul, ikj loop order
 
 ```text
 N = 64, iters = 512, warmup_iters = 128, avg_ms = 0.0337554, gflop/s = 15.532, checksum = 137.625, warmup_checksum = 34.4064
