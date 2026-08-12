@@ -38,7 +38,7 @@ Design decisions are written up in `docs/design.md`.
 ## Performance
 
 - Matmul: about 100x over the naive kernel at large sizes (2 to 200-215
-  gflop/s on an M3 Pro at N = 1024-2048, over 300x at N = 4096), from
+  gflop/s at N = 1024-2048, over 300x at N = 4096), from
   threading, an SIMD row kernel, and k blocking; full history in
   `benchmarks/matmul.md`
 - Generation: the kv cache takes gpt2 small from 75.8 to 16.5 ms/token,
